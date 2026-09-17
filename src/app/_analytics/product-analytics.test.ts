@@ -400,6 +400,28 @@ test("only configured production traffic is eligible for analytics", async () =>
   }
 });
 
+test("a device-local production opt-out takes precedence while the page remains open", async () => {
+  const harness = createHarness();
+  let optedOut = false;
+  harness.dependencies.environment.deviceOptOut = { current: () => optedOut };
+  const analytics = createProductAnalytics(harness.dependencies);
+  harness.setConsent("granted");
+  analytics.synchronizeConsent(demoOpened());
+  await harness.settle();
+
+  optedOut = true;
+  analytics.capture({
+    name: "lead_form_viewed",
+    properties: { locale: "en", page_kind: "demo" },
+  });
+  await harness.settle();
+
+  assert.deepEqual(
+    harness.calls.filter((call) => call.operation === "capture").map((call) => call.name),
+    ["demo_opened"],
+  );
+});
+
 test("storage and transport failures remain invisible to product behavior", async () => {
   const deniedStorage = createHarness();
   deniedStorage.dependencies.storage = {

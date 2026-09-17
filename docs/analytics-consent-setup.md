@@ -17,7 +17,7 @@ The checked-in script disables Google Consent Mode and deliberately does not rel
 
 ## Device-local team opt-out
 
-Production team members can disable analytics in a browser before visiting the site by setting this value in the browser console and reloading:
+Production team members can disable analytics in a browser by setting this value in the browser console:
 
 ```js
 localStorage.setItem("reviewguard.analytics.team-opt-out", "true")

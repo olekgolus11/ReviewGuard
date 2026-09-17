@@ -8,14 +8,13 @@ import {
   currentPageMilestone,
   isDeviceOptedOut,
 } from "./browser-analytics";
+import { connectProductAnalyticsRuntime } from "./analytics-runtime";
 import { createPostHogTransport } from "./posthog-transport";
 import {
-  createProductAnalytics,
   type AnalyticsLocale,
   type ProductAnalyticsDependencies,
+  POSTHOG_EU_INGESTION_HOST,
 } from "./product-analytics";
-
-const POSTHOG_EU_INGESTION_HOST = "https://eu.i.posthog.com";
 
 function browserSessionStorage(): ProductAnalyticsDependencies["storage"] {
   return {
@@ -62,10 +61,12 @@ export function AnalyticsRuntime({
   locale: AnalyticsLocale;
 }) {
   const pathname = usePathname();
-  const analyticsRef = useRef<ReturnType<typeof createProductAnalytics> | undefined>(undefined);
+  const runtimeRef = useRef<ReturnType<typeof connectProductAnalyticsRuntime> | undefined>(
+    undefined,
+  );
 
   useEffect(() => {
-    const analytics = createProductAnalytics({
+    const runtime = connectProductAnalyticsRuntime({
       transport: createPostHogTransport(),
       consent: cookiebotAnalyticsConsent,
       storage: browserSessionStorage(),
@@ -74,26 +75,23 @@ export function AnalyticsRuntime({
       environment: {
         deployment,
         hostname: window.location.hostname,
-        deviceOptOut: deviceOptOut(),
+        deviceOptOut: { current: deviceOptOut },
         configuration: apiKey
           ? { apiKey, host: POSTHOG_EU_INGESTION_HOST }
           : undefined,
       },
+      currentPage: () => currentBrowserPage(locale),
     });
-    analyticsRef.current = analytics;
-    const unsubscribe = cookiebotAnalyticsConsent.subscribe(() => {
-      analytics.synchronizeConsent(currentBrowserPage(locale));
-    });
-    analytics.synchronizeConsent(currentBrowserPage(locale));
+    runtimeRef.current = runtime;
 
     return () => {
-      unsubscribe();
-      analyticsRef.current = undefined;
+      runtime.disconnect();
+      runtimeRef.current = undefined;
     };
   }, [apiKey, deployment, locale]);
 
   useEffect(() => {
-    analyticsRef.current?.synchronizeConsent(currentBrowserPage(locale));
+    runtimeRef.current?.synchronizePage();
   }, [locale, pathname]);
 
   return null;

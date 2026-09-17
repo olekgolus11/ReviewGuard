@@ -1,8 +1,11 @@
-import type {
-  AnalyticsConfiguration,
-  AnalyticsTransport,
-  AnalyticsTransportEvent,
-} from "./product-analytics";
+import {
+  ANALYTICS_EVENT_PROPERTY_KEYS,
+  POSTHOG_EU_INGESTION_HOST,
+  sanitizeProductAnalyticsEvent,
+  type AnalyticsConfiguration,
+  type AnalyticsTransport,
+  type AnalyticsTransportEvent,
+} from "./product-analytics.ts";
 import type { CaptureResult } from "posthog-js";
 
 export type PostHogInitializationOptions = {
@@ -43,49 +46,28 @@ export type PostHogClient = {
   shutdown(): void | Promise<void>;
 };
 
-const EU_INGESTION_HOST = "https://eu.i.posthog.com";
-
-const semanticEvents = new Set([
-  "landing_page_viewed",
-  "demo_opened",
-  "review_opened",
-  "reply_edited",
-  "reply_approved",
-  "reply_copied",
-  "prepared_reply_variant_selected",
-  "lead_form_viewed",
-  "lead_submitted",
-]);
-
-const semanticProperties = new Set([
-  "locale",
-  "page_kind",
-  "utm_source",
-  "utm_medium",
-  "utm_campaign",
-  "utm_content",
-  "utm_term",
-  "referrer_domain",
-  "device_class",
-  "review_id",
-  "rating",
-  "review_category",
-  "action_kind",
-]);
+const semanticProperties = new Set<string>(ANALYTICS_EVENT_PROPERTY_KEYS);
 
 function beforeSend(event: CaptureResult | null) {
-  if (!event || !semanticEvents.has(event.event)) return null;
+  if (!event) return null;
 
-  const properties: Record<string, unknown> = {};
+  const candidateProperties: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(event.properties ?? {})) {
-    if (
-      semanticProperties.has(key)
-      || (key === "token" && typeof value === "string")
-      || (key === "distinct_id" && typeof value === "string")
-      || (key === "$process_person_profile" && value === false)
-    ) {
-      properties[key] = value;
-    }
+    if (semanticProperties.has(key)) candidateProperties[key] = value;
+  }
+  const semanticEvent = sanitizeProductAnalyticsEvent({
+    name: event.event,
+    properties: candidateProperties,
+  });
+  if (!semanticEvent) return null;
+
+  const properties: Record<string, unknown> = { ...semanticEvent.properties };
+  const token = event.properties?.token;
+  const distinctId = event.properties?.distinct_id;
+  if (typeof token === "string") properties.token = token;
+  if (typeof distinctId === "string") properties.distinct_id = distinctId;
+  if (event.properties?.$process_person_profile === false) {
+    properties.$process_person_profile = false;
   }
 
   return {
@@ -154,7 +136,7 @@ export function createPostHogTransport(
 
   return {
     async initialize(configuration: AnalyticsConfiguration) {
-      if (configuration.host !== EU_INGESTION_HOST) {
+      if (configuration.host !== POSTHOG_EU_INGESTION_HOST) {
         throw new Error("PostHog analytics is restricted to the EU ingestion host");
       }
       const nextClient = await loadClient();

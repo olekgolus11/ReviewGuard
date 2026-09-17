@@ -17,6 +17,8 @@ export type AnalyticsReviewId =
 export type AnalyticsReviewCategory = "quick" | "personalize" | "caution";
 export type AnalyticsActionKind = "style" | "length" | "variant";
 
+export const POSTHOG_EU_INGESTION_HOST = "https://eu.i.posthog.com";
+
 export type AcquisitionProperties = {
   utm_source?: string;
   utm_medium?: string;
@@ -86,7 +88,7 @@ export type ProductAnalyticsDependencies = {
   environment: {
     deployment: "production" | "preview" | "development" | "test";
     hostname: string;
-    deviceOptOut: boolean;
+    deviceOptOut: boolean | { current(): boolean };
     configuration?: AnalyticsConfiguration;
   };
 };
@@ -140,10 +142,20 @@ function isEligibleEnvironment(
     && hostname !== "127.0.0.1"
     && hostname !== "::1"
     && !hostname.endsWith(".localhost")
-    && !environment.deviceOptOut
+    && !isDeviceOptedOut(environment.deviceOptOut)
     && typeof configuration?.apiKey === "string"
     && configuration.apiKey.trim().length > 0
-    && configuration.host === "https://eu.i.posthog.com";
+    && configuration.host === POSTHOG_EU_INGESTION_HOST;
+}
+
+function isDeviceOptedOut(
+  source: ProductAnalyticsDependencies["environment"]["deviceOptOut"],
+) {
+  try {
+    return typeof source === "boolean" ? source : source.current() === true;
+  } catch {
+    return true;
+  }
 }
 
 const acquisitionKeys = [
@@ -162,6 +174,11 @@ const reviewKeys = [
   "review_id",
   "rating",
   "review_category",
+] as const;
+
+export const ANALYTICS_EVENT_PROPERTY_KEYS = [
+  ...reviewKeys,
+  "action_kind",
 ] as const;
 
 const reviewFacts: Record<
@@ -286,7 +303,9 @@ function sanitizeReviewProperties(value: unknown) {
   } satisfies ReviewProperties;
 }
 
-function sanitizeEvent(value: unknown): ProductAnalyticsEvent | undefined {
+export function sanitizeProductAnalyticsEvent(
+  value: unknown,
+): ProductAnalyticsEvent | undefined {
   if (
     !isRecord(value)
     || !hasOnlyKeys(value, ["name", "properties"])
@@ -439,10 +458,14 @@ export function createProductAnalytics(dependencies: ProductAnalyticsDependencie
 
   function capture(input: ProductAnalyticsEvent) {
     if (currentConsent() !== consent) synchronizeConsent();
-    if (consent !== "granted" || !initialization) return;
+    if (
+      consent !== "granted"
+      || !initialization
+      || !isEligibleEnvironment(dependencies.environment)
+    ) return;
     let event: ProductAnalyticsEvent | undefined;
     try {
-      event = sanitizeEvent(input);
+      event = sanitizeProductAnalyticsEvent(input);
     } catch {
       return;
     }
