@@ -20,6 +20,7 @@ import {
   type ReviewFilter,
 } from "./demo-session";
 import styles from "./prototype.module.css";
+import { PrivacyControls } from "../_consent/PrivacyControls";
 
 // The validated review workspace: control desk on desktop, focus mode on mobile.
 
@@ -754,6 +755,7 @@ export function DemoPrototype({
       </div>
       <div className={styles.desktopWinner}><DesktopWorkspace {...props} /></div>
       <div className={styles.mobileWinner}><MobileWorkspace {...props} /></div>
+      <PrivacyControls locale={locale} tone="dark" />
       {ctaOpen ? (
         <div className={styles.modalBackdrop} role="presentation" onMouseDown={() => setCtaOpen(false)}>
           <section aria-labelledby="pilot-title" aria-modal="true" className={styles.modal} onMouseDown={(event) => event.stopPropagation()} role="dialog">

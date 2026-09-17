@@ -1,4 +1,5 @@
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { CookiebotScript } from "../_consent/CookiebotScript";
 import "../globals.css";
 
 const plexSans = IBM_Plex_Sans({
@@ -16,7 +17,10 @@ const plexMono = IBM_Plex_Mono({
 export default function EnglishRootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${plexSans.variable} ${plexMono.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col">{children}</body>
+      <body className="flex min-h-full flex-col">
+        {children}
+        <CookiebotScript locale="en" />
+      </body>
     </html>
   );
 }

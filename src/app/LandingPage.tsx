@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PrivacyControls } from "./_consent/PrivacyControls";
 import { LeadForm } from "./LeadForm";
 import { landingCopy, type Locale } from "./landing-copy";
 
@@ -240,6 +241,7 @@ export function LandingPage({ locale }: { locale: Locale }) {
         </div>
         <LeadForm copy={copy.form} locale={locale} />
       </section>
+      <PrivacyControls locale={locale} />
     </main>
   );
 }
