@@ -62,7 +62,7 @@ export type CurrentAnalyticsPage = Extract<
 
 export type AnalyticsConfiguration = {
   apiKey: string;
-  host: string;
+  host: typeof POSTHOG_EU_INGESTION_HOST;
 };
 
 export type AnalyticsTransportEvent = ProductAnalyticsEvent & {
@@ -176,10 +176,7 @@ const reviewKeys = [
   "review_category",
 ] as const;
 
-export const ANALYTICS_EVENT_PROPERTY_KEYS = [
-  ...reviewKeys,
-  "action_kind",
-] as const;
+export const ANALYTICS_PAGE_MILESTONE_PROPERTY_KEYS = pageKeys;
 
 const reviewFacts: Record<
   AnalyticsReviewId,
@@ -499,6 +496,7 @@ export function createProductAnalytics(dependencies: ProductAnalyticsDependencie
           !initialized
           || consent !== "granted"
           || consentGeneration !== activeConsentGeneration
+          || !isEligibleEnvironment(dependencies.environment)
         ) return;
         return dependencies.transport.capture(transportEvent);
       })

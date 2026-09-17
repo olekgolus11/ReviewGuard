@@ -4,6 +4,7 @@ import {
   createPostHogTransport,
   type PostHogClient,
 } from "./posthog-transport.ts";
+import type { AnalyticsConfiguration } from "./product-analytics.ts";
 
 test("PostHog transport rejects other hosts and shuts down without product impact", async () => {
   let shutdowns = 0;
@@ -18,7 +19,10 @@ test("PostHog transport rejects other hosts and shuts down without product impac
 
   await assert.rejects(
     Promise.resolve(
-      transport.initialize({ apiKey: "phc_test", host: "https://us.i.posthog.com" }),
+      transport.initialize({
+        apiKey: "phc_test",
+        host: "https://us.i.posthog.com",
+      } as unknown as AnalyticsConfiguration),
     ),
   );
   await transport.initialize({ apiKey: "phc_test", host: "https://eu.i.posthog.com" });

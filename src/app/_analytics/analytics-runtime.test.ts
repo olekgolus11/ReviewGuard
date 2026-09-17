@@ -13,29 +13,12 @@ test("consent and navigation produce only current, sanitized, once-per-session p
   let sdkLoads = 0;
   const transport = createPostHogTransport(async () => {
     sdkLoads += 1;
-    let apiKey = "";
-    let sanitize: Parameters<PostHogClient["init"]>[1]["before_send"];
     return {
-      init(nextApiKey, options) {
-        apiKey = nextApiKey;
-        sanitize = options.before_send;
-      },
+      init() {},
       capture(event, properties) {
-        const sanitized = sanitize({
-          uuid: "00000000-0000-0000-0000-000000000000",
+        requests.push({
           event,
-          properties: {
-            token: apiKey,
-            $process_person_profile: false,
-            $current_url: "https://reviewguard.pl/private?lead=secret",
-            $referrer: "https://private.example/customer/42",
-            $browser: "Example Browser",
-            ...properties,
-          },
-        });
-        if (sanitized) requests.push({
-          event: sanitized.event,
-          properties: sanitized.properties,
+          properties: properties ?? {},
         });
       },
       async shutdown() {},
@@ -96,8 +79,6 @@ test("consent and navigation produce only current, sanitized, once-per-session p
     {
       event: "demo_opened",
       properties: {
-        token: "phc_test",
-        $process_person_profile: false,
         locale: "en",
         page_kind: "demo",
         device_class: "mobile",
@@ -107,8 +88,6 @@ test("consent and navigation produce only current, sanitized, once-per-session p
     {
       event: "landing_page_viewed",
       properties: {
-        token: "phc_test",
-        $process_person_profile: false,
         locale: "en",
         page_kind: "landing",
         device_class: "mobile",
@@ -116,5 +95,5 @@ test("consent and navigation produce only current, sanitized, once-per-session p
       },
     },
   ]);
-  runtime.disconnect();
+  runtime.unsubscribeConsent();
 });

@@ -16,7 +16,7 @@ import {
   POSTHOG_EU_INGESTION_HOST,
 } from "./product-analytics";
 
-function browserSessionStorage(): ProductAnalyticsDependencies["storage"] {
+function safeBrowserSessionStorage(): ProductAnalyticsDependencies["storage"] {
   return {
     getItem(key) {
       return window.sessionStorage.getItem(key);
@@ -69,7 +69,7 @@ export function AnalyticsRuntime({
     const runtime = connectProductAnalyticsRuntime({
       transport: createPostHogTransport(),
       consent: cookiebotAnalyticsConsent,
-      storage: browserSessionStorage(),
+      storage: safeBrowserSessionStorage(),
       clock: { now: () => Date.now() },
       session: { createId: () => crypto.randomUUID() },
       environment: {
@@ -85,7 +85,7 @@ export function AnalyticsRuntime({
     runtimeRef.current = runtime;
 
     return () => {
-      runtime.disconnect();
+      runtime.unsubscribeConsent();
       runtimeRef.current = undefined;
     };
   }, [apiKey, deployment, locale]);

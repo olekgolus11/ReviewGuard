@@ -22,6 +22,6 @@ export function connectProductAnalyticsRuntime(
 
   return {
     synchronizePage: synchronize,
-    disconnect: disconnectConsent,
+    unsubscribeConsent: disconnectConsent,
   };
 }

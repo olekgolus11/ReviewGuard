@@ -1,5 +1,5 @@
 import {
-  ANALYTICS_EVENT_PROPERTY_KEYS,
+  ANALYTICS_PAGE_MILESTONE_PROPERTY_KEYS,
   POSTHOG_EU_INGESTION_HOST,
   sanitizeProductAnalyticsEvent,
   type AnalyticsConfiguration,
@@ -46,20 +46,23 @@ export type PostHogClient = {
   shutdown(): void | Promise<void>;
 };
 
-const semanticProperties = new Set<string>(ANALYTICS_EVENT_PROPERTY_KEYS);
+const pageMilestoneProperties = new Set<string>(ANALYTICS_PAGE_MILESTONE_PROPERTY_KEYS);
 
 function beforeSend(event: CaptureResult | null) {
   if (!event) return null;
 
   const candidateProperties: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(event.properties ?? {})) {
-    if (semanticProperties.has(key)) candidateProperties[key] = value;
+    if (pageMilestoneProperties.has(key)) candidateProperties[key] = value;
   }
   const semanticEvent = sanitizeProductAnalyticsEvent({
     name: event.event,
     properties: candidateProperties,
   });
-  if (!semanticEvent) return null;
+  if (
+    !semanticEvent
+    || (semanticEvent.name !== "landing_page_viewed" && semanticEvent.name !== "demo_opened")
+  ) return null;
 
   const properties: Record<string, unknown> = { ...semanticEvent.properties };
   const token = event.properties?.token;

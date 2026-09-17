@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createProductAnalytics,
+  type AnalyticsConfiguration,
   type AnalyticsConsent,
   type AnalyticsTransport,
   type ProductAnalyticsDependencies,
@@ -384,7 +385,10 @@ test("only configured production traffic is eligible for analytics", async () =>
       deployment: "production",
       hostname: "reviewguard.pl",
       deviceOptOut: false,
-      configuration: { apiKey: "phc_test", host: "https://us.i.posthog.com" },
+      configuration: {
+        apiKey: "phc_test",
+        host: "https://us.i.posthog.com",
+      } as unknown as AnalyticsConfiguration,
     },
   ];
 
@@ -420,6 +424,33 @@ test("a device-local production opt-out takes precedence while the page remains 
     harness.calls.filter((call) => call.operation === "capture").map((call) => call.name),
     ["demo_opened"],
   );
+});
+
+test("a device opt-out enabled during SDK startup cancels the queued milestone", async () => {
+  const harness = createHarness();
+  let optedOut = false;
+  let finishInitialization: (() => void) | undefined;
+  harness.dependencies.environment.deviceOptOut = { current: () => optedOut };
+  harness.dependencies.transport = {
+    initialize() {
+      return new Promise<void>((resolve) => {
+        finishInitialization = resolve;
+      });
+    },
+    capture(event) {
+      harness.calls.push({ operation: "capture", ...event });
+    },
+  };
+  const analytics = createProductAnalytics(harness.dependencies);
+  harness.setConsent("granted");
+  analytics.synchronizeConsent(demoOpened());
+  await harness.settle();
+
+  optedOut = true;
+  finishInitialization?.();
+  await harness.settle();
+
+  assert.deepEqual(harness.calls, []);
 });
 
 test("storage and transport failures remain invisible to product behavior", async () => {
