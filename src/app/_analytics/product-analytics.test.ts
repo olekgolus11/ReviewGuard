@@ -231,6 +231,47 @@ test("a tab keeps one Anonymous analytics session across reloads while tabs stay
   assert.deepEqual(capturedSessionIds(anotherTab.calls), ["tab-b-session-1"]);
 });
 
+test("landing and demo page milestones are each captured once per Anonymous analytics session", async () => {
+  const tabStorage = new Map<string, string>();
+  const firstLoad = createHarness({ values: tabStorage });
+  const analytics = createProductAnalytics(firstLoad.dependencies);
+  firstLoad.setConsent("granted");
+
+  analytics.synchronizeConsent({
+    name: "landing_page_viewed",
+    properties: { locale: "en", page_kind: "landing", utm_source: "newsletter" },
+  });
+  analytics.synchronizeConsent({
+    name: "landing_page_viewed",
+    properties: { locale: "en", page_kind: "landing" },
+  });
+  analytics.synchronizeConsent(demoOpened());
+  analytics.synchronizeConsent(demoOpened());
+  await firstLoad.settle();
+
+  const reload = createHarness({ values: tabStorage });
+  const reloadedAnalytics = createProductAnalytics(reload.dependencies);
+  reload.setConsent("granted");
+  reloadedAnalytics.synchronizeConsent(demoOpened());
+  await reload.settle();
+
+  const captures = [...firstLoad.calls, ...reload.calls]
+    .filter((call) => call.operation === "capture");
+  assert.deepEqual(captures.map((capture) => capture.name), [
+    "landing_page_viewed",
+    "demo_opened",
+  ]);
+  assert.deepEqual(captures.map((capture) => capture.anonymousSessionId), [
+    "session-1",
+    "session-1",
+  ]);
+  assert.deepEqual(captures[1]?.properties, {
+    locale: "en",
+    page_kind: "demo",
+    utm_source: "newsletter",
+  });
+});
+
 test("Anonymous analytics sessions expire after inactivity and after their absolute lifetime", async () => {
   const inactivity = createHarness();
   const first = createProductAnalytics(inactivity.dependencies);
@@ -460,7 +501,17 @@ test("the typed contract forwards every allowed event and property", async () =>
     events.map((event) => event.name),
   );
   assert.deepEqual(captures[0]?.properties, page);
-  assert.deepEqual(captures[6]?.properties, { ...review, action_kind: "length" });
+  assert.deepEqual(captures[6]?.properties, {
+    ...review,
+    action_kind: "length",
+    utm_source: "newsletter",
+    utm_medium: "email",
+    utm_campaign: "pilot-launch",
+    utm_content: "primary-cta",
+    utm_term: "review-management",
+    referrer_domain: "example.com",
+    device_class: "mobile",
+  });
 });
 
 test("unknown events, properties, and uncontrolled values are rejected before transport", async () => {

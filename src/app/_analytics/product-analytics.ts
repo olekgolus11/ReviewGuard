@@ -17,7 +17,7 @@ export type AnalyticsReviewId =
 export type AnalyticsReviewCategory = "quick" | "personalize" | "caution";
 export type AnalyticsActionKind = "style" | "length" | "variant";
 
-type AcquisitionProperties = {
+export type AcquisitionProperties = {
   utm_source?: string;
   utm_medium?: string;
   utm_campaign?: string;
@@ -100,6 +100,8 @@ type StoredAnalyticsSession = {
   id: string;
   startedAt: number;
   lastActivityAt: number;
+  acquisition?: AcquisitionProperties;
+  pageMilestones?: Array<"landing_page_viewed" | "demo_opened">;
 };
 
 function isStoredAnalyticsSession(value: unknown): value is StoredAnalyticsSession {
@@ -110,7 +112,20 @@ function isStoredAnalyticsSession(value: unknown): value is StoredAnalyticsSessi
     && typeof session.startedAt === "number"
     && Number.isFinite(session.startedAt)
     && typeof session.lastActivityAt === "number"
-    && Number.isFinite(session.lastActivityAt);
+    && Number.isFinite(session.lastActivityAt)
+    && (
+      session.acquisition === undefined
+      || sanitizeAcquisitionProperties(session.acquisition) !== undefined
+    )
+    && (
+      session.pageMilestones === undefined
+      || (
+        Array.isArray(session.pageMilestones)
+        && session.pageMilestones.every(
+          (name) => name === "landing_page_viewed" || name === "demo_opened",
+        )
+      )
+    );
 }
 
 function isEligibleEnvironment(
@@ -174,9 +189,35 @@ function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[])
   return Object.keys(value).every((key) => allowed.includes(key));
 }
 
-function isCampaignValue(value: unknown): value is string {
+export function isAnalyticsCampaignValue(value: unknown): value is string {
   return typeof value === "string"
     && /^[A-Za-z0-9][A-Za-z0-9._~-]{0,99}$/.test(value);
+}
+
+export function isAnalyticsReferrerDomain(value: unknown): value is string {
+  return typeof value === "string"
+    && value.length <= 253
+    && /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(
+      value,
+    );
+}
+
+function sanitizeAcquisitionProperties(value: unknown): AcquisitionProperties | undefined {
+  if (!isRecord(value) || !hasOnlyKeys(value, acquisitionKeys)) return undefined;
+  const page = sanitizePageProperties({ locale: "en", page_kind: "landing", ...value });
+  if (!page) return undefined;
+  return acquisitionFromPage(page);
+}
+
+function acquisitionFromPage(properties: PageProperties): AcquisitionProperties {
+  const acquisition: AcquisitionProperties = {};
+  for (const key of acquisitionKeys) {
+    const value = properties[key];
+    if (value !== undefined) {
+      (acquisition as Record<string, unknown>)[key] = value;
+    }
+  }
+  return acquisition;
 }
 
 function sanitizePageProperties(
@@ -195,17 +236,11 @@ function sanitizePageProperties(
     "utm_content",
     "utm_term",
   ] as const) {
-    if (value[key] !== undefined && !isCampaignValue(value[key])) return undefined;
+    if (value[key] !== undefined && !isAnalyticsCampaignValue(value[key])) return undefined;
   }
   if (
     value.referrer_domain !== undefined
-    && (
-      typeof value.referrer_domain !== "string"
-      || value.referrer_domain.length > 253
-      || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(
-        value.referrer_domain,
-      )
-    )
+    && !isAnalyticsReferrerDomain(value.referrer_domain)
   ) return undefined;
   if (
     value.device_class !== undefined
@@ -366,6 +401,7 @@ export function createProductAnalytics(dependencies: ProductAnalyticsDependencie
       id: dependencies.session.createId(),
       startedAt: now,
       lastActivityAt: now,
+      pageMilestones: [],
     };
     if (!persistSession(session)) return undefined;
     return session;
@@ -413,6 +449,22 @@ export function createProductAnalytics(dependencies: ProductAnalyticsDependencie
     if (!event) return;
     const session = sessionForActivity();
     if (!session) return;
+    const eventAcquisition = acquisitionFromPage(event.properties);
+    if (!session.acquisition && Object.keys(eventAcquisition).length > 0) {
+      session.acquisition = eventAcquisition;
+    }
+    const pageMilestone = event.name === "landing_page_viewed" || event.name === "demo_opened"
+      ? event.name
+      : undefined;
+    const pageMilestones = session.pageMilestones ?? [];
+    if (pageMilestone && pageMilestones.includes(pageMilestone)) return;
+    if (pageMilestone) pageMilestones.push(pageMilestone);
+    session.pageMilestones = pageMilestones;
+    if (!persistSession(session)) return;
+    event = {
+      ...event,
+      properties: { ...event.properties, ...session.acquisition },
+    } as ProductAnalyticsEvent;
     const activeConsentGeneration = consentGeneration;
     const transportEvent = {
       ...event,
