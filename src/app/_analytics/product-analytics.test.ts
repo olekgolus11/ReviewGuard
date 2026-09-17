@@ -165,6 +165,77 @@ test("repeated review openings remain separate raw events in one Anonymous analy
   ]);
 });
 
+test("a reply is marked edited only once per Review in an Anonymous analytics session", async () => {
+  const sessionStorage = new Map<string, string>();
+  const firstLoad = createHarness({ values: sessionStorage });
+  const firstAnalytics = createProductAnalytics(firstLoad.dependencies);
+  const event = {
+    name: "reply_edited" as const,
+    properties: {
+      locale: "en" as const,
+      page_kind: "demo" as const,
+      review_id: "P1" as const,
+      rating: 5 as const,
+      review_category: "quick" as const,
+    },
+  };
+  firstLoad.setConsent("granted");
+  firstAnalytics.synchronizeConsent();
+
+  firstAnalytics.capture(event);
+  firstAnalytics.capture(event);
+  await firstLoad.settle();
+
+  const reload = createHarness({ values: sessionStorage });
+  const reloadedAnalytics = createProductAnalytics(reload.dependencies);
+  reload.setConsent("granted");
+  reloadedAnalytics.synchronizeConsent();
+  reloadedAnalytics.capture(event);
+  await reload.settle();
+
+  const captures = [...firstLoad.calls, ...reload.calls]
+    .filter((call) => call.operation === "capture");
+  assert.equal(captures.filter((capture) => capture.name === "reply_edited").length, 1);
+
+  reload.setConsent("denied");
+  reloadedAnalytics.synchronizeConsent();
+  reload.setConsent("granted");
+  reloadedAnalytics.synchronizeConsent();
+  reloadedAnalytics.capture(event);
+  await reload.settle();
+
+  assert.equal(
+    reload.calls.filter((capture) => capture.name === "reply_edited").length,
+    1,
+  );
+});
+
+test("reply actions are ignored before consent and captured after it is granted", async () => {
+  const harness = createHarness();
+  const analytics = createProductAnalytics(harness.dependencies);
+  const event = {
+    name: "reply_approved" as const,
+    properties: {
+      locale: "pl" as const,
+      page_kind: "demo" as const,
+      review_id: "P1" as const,
+      rating: 5 as const,
+      review_category: "quick" as const,
+    },
+  };
+
+  analytics.capture(event);
+  harness.setConsent("granted");
+  analytics.synchronizeConsent();
+  analytics.capture(event);
+  await harness.settle();
+
+  assert.equal(
+    harness.calls.filter((capture) => capture.name === "reply_approved").length,
+    1,
+  );
+});
+
 test("rejection and withdrawal prevent capture, and withdrawal clears the tab identity", async () => {
   const harness = createHarness();
   const analytics = createProductAnalytics(harness.dependencies);
@@ -619,13 +690,6 @@ test("the typed contract forwards every allowed event and property", async () =>
   assert.deepEqual(captures[6]?.properties, {
     ...review,
     action_kind: "length",
-    utm_source: "newsletter",
-    utm_medium: "email",
-    utm_campaign: "pilot-launch",
-    utm_content: "primary-cta",
-    utm_term: "review-management",
-    referrer_domain: "example.com",
-    device_class: "mobile",
   });
 });
 

@@ -10,6 +10,7 @@ import type {
 import type { ProductAnalyticsEvent } from "../_analytics/product-analytics";
 
 export type ReviewFilter = "all" | "violations" | ReviewCategory;
+export type ReplyAction = "edited" | "approved" | "copied" | "style" | "length" | "variant";
 
 type ApprovalState = {
   statuses: Record<string, ReviewStatus>;
@@ -136,6 +137,39 @@ export function reviewOpenedEvent(
       review_category: review.category,
     },
   };
+}
+
+export function replyActionEvent(
+  locale: DemoLocale,
+  review: DemoReview,
+  action: ReplyAction,
+): Extract<
+  ProductAnalyticsEvent,
+  { name: "reply_edited" | "reply_approved" | "reply_copied" | "prepared_reply_variant_selected" }
+> {
+  const properties = {
+    locale,
+    page_kind: "demo" as const,
+    review_id: review.id,
+    rating: review.rating,
+    review_category: review.category,
+  };
+
+  switch (action) {
+    case "edited":
+      return { name: "reply_edited", properties };
+    case "approved":
+      return { name: "reply_approved", properties };
+    case "copied":
+      return { name: "reply_copied", properties };
+    case "style":
+    case "length":
+    case "variant":
+      return {
+        name: "prepared_reply_variant_selected",
+        properties: { ...properties, action_kind: action },
+      };
+  }
 }
 
 export function preparedReply(review: DemoReview, selection: ReplySelection) {

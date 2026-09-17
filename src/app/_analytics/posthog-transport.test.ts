@@ -81,3 +81,55 @@ test("PostHog forwards review-opened with only stable fictional review facts", a
     $unset: undefined,
   });
 });
+
+test("PostHog forwards every meaningful reply action with only allowlisted Review facts", async () => {
+  let options: Parameters<PostHogClient["init"]>[1] | undefined;
+  const captures: Array<{ name: string; properties?: Record<string, unknown> }> = [];
+  const client: PostHogClient = {
+    init(_apiKey, nextOptions) {
+      options = nextOptions;
+    },
+    capture(name, properties) {
+      captures.push({ name, properties });
+    },
+    shutdown() {},
+  };
+  const transport = createPostHogTransport(async () => client);
+  await transport.initialize({ apiKey: "phc_test", host: "https://eu.i.posthog.com" });
+  const reply = {
+    locale: "pl" as const,
+    page_kind: "demo" as const,
+    review_id: "M1" as const,
+    rating: 3 as const,
+    review_category: "personalize" as const,
+  };
+  const actions = [
+    { name: "reply_edited" as const, properties: reply },
+    { name: "reply_approved" as const, properties: reply },
+    { name: "reply_copied" as const, properties: reply },
+    {
+      name: "prepared_reply_variant_selected" as const,
+      properties: { ...reply, action_kind: "variant" as const },
+    },
+  ];
+
+  for (const action of actions) {
+    transport.capture({ ...action, anonymousSessionId: "session-1" });
+  }
+
+  const outgoing = captures.map((capture, index) => options?.before_send({
+    uuid: `event-${index}`,
+    event: capture.name,
+    properties: {
+      ...capture.properties,
+      reply_text: "must never leave the browser",
+      utm_source: "newsletter",
+    },
+  }));
+  assert.deepEqual(outgoing.map((event) => event?.properties), [
+    { ...reply, distinct_id: "session-1" },
+    { ...reply, distinct_id: "session-1" },
+    { ...reply, distinct_id: "session-1" },
+    { ...reply, action_kind: "variant", distinct_id: "session-1" },
+  ]);
+});

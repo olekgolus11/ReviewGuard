@@ -99,6 +99,7 @@ type StoredAnalyticsSession = {
   lastActivityAt: number;
   acquisition?: AcquisitionProperties;
   pageMilestones?: Array<"landing_page_viewed" | "demo_opened">;
+  editedReviewIds?: AnalyticsReviewId[];
 };
 
 function isStoredAnalyticsSession(value: unknown): value is StoredAnalyticsSession {
@@ -121,6 +122,16 @@ function isStoredAnalyticsSession(value: unknown): value is StoredAnalyticsSessi
         && session.pageMilestones.every(
           (name) => name === "landing_page_viewed" || name === "demo_opened",
         )
+      )
+    )
+    && (
+      session.editedReviewIds === undefined
+      || (
+        Array.isArray(session.editedReviewIds)
+        && session.editedReviewIds.every(
+          (reviewId) => typeof reviewId === "string" && reviewId in reviewFacts,
+        )
+        && new Set(session.editedReviewIds).size === session.editedReviewIds.length
       )
     );
 }
@@ -171,9 +182,15 @@ const reviewKeys = [
   "review_category",
 ] as const;
 const reviewFactKeys = ["locale", "review_id", "rating", "review_category"] as const;
+const replyActionKeys = ["locale", "page_kind", "review_id", "rating", "review_category"] as const;
 
 export const ANALYTICS_PAGE_MILESTONE_PROPERTY_KEYS = pageKeys;
 export const ANALYTICS_REVIEW_OPENED_PROPERTY_KEYS = reviewFactKeys;
+export const ANALYTICS_REPLY_ACTION_PROPERTY_KEYS = replyActionKeys;
+export const ANALYTICS_PREPARED_REPLY_VARIANT_PROPERTY_KEYS = [
+  ...replyActionKeys,
+  "action_kind",
+] as const;
 
 const reviewFacts: Record<
   AnalyticsReviewId,
@@ -315,6 +332,13 @@ function sanitizeReviewFacts(value: unknown): ReviewFacts | undefined {
     rating: expected.rating,
     review_category: expected.review_category,
   };
+}
+
+function isReplyAction(event: ProductAnalyticsEvent) {
+  return event.name === "reply_edited"
+    || event.name === "reply_approved"
+    || event.name === "reply_copied"
+    || event.name === "prepared_reply_variant_selected";
 }
 
 export function sanitizeProductAnalyticsEvent(
@@ -489,7 +513,12 @@ export function createProductAnalytics(dependencies: ProductAnalyticsDependencie
     if (!event) return;
     const session = sessionForActivity();
     if (!session) return;
-    const eventAcquisition = event.name === "review_opened"
+    if (
+      event.name === "reply_edited"
+      && session.editedReviewIds?.includes(event.properties.review_id)
+    ) return;
+    const replyAction = isReplyAction(event);
+    const eventAcquisition = event.name === "review_opened" || replyAction
       ? {}
       : acquisitionFromPage(event.properties);
     if (!session.acquisition && Object.keys(eventAcquisition).length > 0) {
@@ -502,8 +531,14 @@ export function createProductAnalytics(dependencies: ProductAnalyticsDependencie
     if (pageMilestone && pageMilestones.includes(pageMilestone)) return;
     if (pageMilestone) pageMilestones.push(pageMilestone);
     session.pageMilestones = pageMilestones;
+    if (event.name === "reply_edited") {
+      session.editedReviewIds = [
+        ...(session.editedReviewIds ?? []),
+        event.properties.review_id,
+      ];
+    }
     if (!persistSession(session)) return;
-    if (event.name !== "review_opened") {
+    if (event.name !== "review_opened" && !replyAction) {
       event = {
         ...event,
         properties: { ...event.properties, ...session.acquisition },

@@ -19,11 +19,13 @@ import {
   matchesReviewFilter,
   nextReplyStatus,
   preparedReply,
+  replyActionEvent,
   selectReviewInSession,
   reviewOpenedEvent,
   selectionAfterFilterChange,
   sessionSummary,
   type ReviewFilter,
+  type ReplyAction,
 } from "./demo-session";
 import styles from "./prototype.module.css";
 import { PrivacyControls } from "../_consent/PrivacyControls";
@@ -318,7 +320,13 @@ function ReplyEditor({ locale, review, state, setState }: Pick<WorkspaceProps, "
     setState((current) => mutator(current));
   }
 
+  function captureReplyAction(action: ReplyAction) {
+    captureBrowserAnalyticsEvent(replyActionEvent(locale, review, action));
+  }
+
   function changeStyle(nextStyle: ReplyStyle) {
+    if (nextStyle === selectedStyle) return;
+    captureReplyAction("style");
     prepare((current) => invalidateApproval({
       ...current,
       replyStyles: { ...current.replyStyles, [review.id]: nextStyle },
@@ -328,6 +336,7 @@ function ReplyEditor({ locale, review, state, setState }: Pick<WorkspaceProps, "
   }
 
   function regenerate() {
+    captureReplyAction("variant");
     prepare((current) => invalidateApproval({
       ...current,
       replyVersions: {
@@ -342,8 +351,9 @@ function ReplyEditor({ locale, review, state, setState }: Pick<WorkspaceProps, "
     try {
       await navigator.clipboard.writeText(reply);
     } catch {
-      // The visual prototype still records the intent when clipboard access is unavailable.
+      return;
     }
+    captureReplyAction("copied");
     prepare((current) => ({
       ...current,
       copied: appendIfMissing(current.copied, review.id),
@@ -383,11 +393,15 @@ function ReplyEditor({ locale, review, state, setState }: Pick<WorkspaceProps, "
             <button
               aria-pressed={length === item}
               key={item}
-              onClick={() => prepare((current) => invalidateApproval({
-                ...current,
-                lengths: { ...current.lengths, [review.id]: item },
-                drafts: { ...current.drafts, [locale]: withoutKey(current.drafts[locale], review.id) },
-              }, review.id, nextReplyStatus(review, note)))}
+              onClick={() => {
+                if (item === length) return;
+                captureReplyAction("length");
+                prepare((current) => invalidateApproval({
+                  ...current,
+                  lengths: { ...current.lengths, [review.id]: item },
+                  drafts: { ...current.drafts, [locale]: withoutKey(current.drafts[locale], review.id) },
+                }, review.id, nextReplyStatus(review, note)));
+              }}
               type="button"
             >
               {c[item]}
@@ -430,14 +444,17 @@ function ReplyEditor({ locale, review, state, setState }: Pick<WorkspaceProps, "
             <button
               className={styles.darkButton}
               disabled={!hasManagerContext}
-              onClick={() => prepare((current) => invalidateApproval({
-                ...current,
-                drafts: {
-                  ...current.drafts,
-                  [locale]: { ...current.drafts[locale], [review.id]: reply },
-                },
-                edited: appendIfMissing(current.edited, review.id),
-              }, review.id, "ready"))}
+              onClick={() => {
+                captureReplyAction("edited");
+                prepare((current) => invalidateApproval({
+                  ...current,
+                  drafts: {
+                    ...current.drafts,
+                    [locale]: { ...current.drafts[locale], [review.id]: reply },
+                  },
+                  edited: appendIfMissing(current.edited, review.id),
+                }, review.id, "ready"));
+              }}
               type="button"
             >
               {c.useContext}
@@ -449,14 +466,26 @@ function ReplyEditor({ locale, review, state, setState }: Pick<WorkspaceProps, "
       <textarea
         aria-label={c.reply}
         className={styles.replyTextarea}
-        onChange={(event) => prepare((current) => invalidateApproval({
-          ...current,
-          drafts: {
-            ...current.drafts,
-            [locale]: { ...current.drafts[locale], [review.id]: event.target.value },
-          },
-          edited: appendIfMissing(current.edited, review.id),
-        }, review.id, "ready"))}
+        onChange={(event) => {
+          const prepared = preparedReply(review, {
+            locale,
+            style: selectedStyle,
+            version: replyVersion,
+            length,
+            managerNote: note,
+          });
+          if (event.target.value !== prepared) {
+            captureReplyAction("edited");
+          }
+          prepare((current) => invalidateApproval({
+            ...current,
+            drafts: {
+              ...current.drafts,
+              [locale]: { ...current.drafts[locale], [review.id]: event.target.value },
+            },
+            edited: appendIfMissing(current.edited, review.id),
+          }, review.id, "ready"));
+        }}
         value={reply}
       />
 
@@ -464,10 +493,13 @@ function ReplyEditor({ locale, review, state, setState }: Pick<WorkspaceProps, "
         <button
           className={styles.approveButton}
           disabled={status === "context"}
-          onClick={() => prepare((current) => ({
-            ...current,
-            statuses: { ...current.statuses, [review.id]: "approved" },
-          }))}
+          onClick={() => {
+            captureReplyAction("approved");
+            prepare((current) => ({
+              ...current,
+              statuses: { ...current.statuses, [review.id]: "approved" },
+            }));
+          }}
           type="button"
         >
           {status === "approved" ? `✓ ${c.approvedAction}` : c.approve}

@@ -1,5 +1,7 @@
 import {
   ANALYTICS_PAGE_MILESTONE_PROPERTY_KEYS,
+  ANALYTICS_PREPARED_REPLY_VARIANT_PROPERTY_KEYS,
+  ANALYTICS_REPLY_ACTION_PROPERTY_KEYS,
   ANALYTICS_REVIEW_OPENED_PROPERTY_KEYS,
   POSTHOG_EU_INGESTION_HOST,
   sanitizeProductAnalyticsEvent,
@@ -49,6 +51,10 @@ export type PostHogClient = {
 
 const pageMilestoneProperties = new Set<string>(ANALYTICS_PAGE_MILESTONE_PROPERTY_KEYS);
 const reviewOpenedProperties = new Set<string>(ANALYTICS_REVIEW_OPENED_PROPERTY_KEYS);
+const replyActionProperties = new Set<string>(ANALYTICS_REPLY_ACTION_PROPERTY_KEYS);
+const preparedReplyVariantProperties = new Set<string>(
+  ANALYTICS_PREPARED_REPLY_VARIANT_PROPERTY_KEYS,
+);
 
 function beforeSend(event: CaptureResult | null) {
   if (!event) return null;
@@ -56,7 +62,13 @@ function beforeSend(event: CaptureResult | null) {
   const candidateProperties: Record<string, unknown> = {};
   const allowedProperties = event.event === "review_opened"
     ? reviewOpenedProperties
-    : pageMilestoneProperties;
+    : event.event === "prepared_reply_variant_selected"
+      ? preparedReplyVariantProperties
+      : event.event === "reply_edited"
+        || event.event === "reply_approved"
+        || event.event === "reply_copied"
+        ? replyActionProperties
+        : pageMilestoneProperties;
   for (const [key, value] of Object.entries(event.properties ?? {})) {
     if (allowedProperties.has(key)) candidateProperties[key] = value;
   }
@@ -70,6 +82,10 @@ function beforeSend(event: CaptureResult | null) {
       semanticEvent.name !== "landing_page_viewed"
       && semanticEvent.name !== "demo_opened"
       && semanticEvent.name !== "review_opened"
+      && semanticEvent.name !== "reply_edited"
+      && semanticEvent.name !== "reply_approved"
+      && semanticEvent.name !== "reply_copied"
+      && semanticEvent.name !== "prepared_reply_variant_selected"
     )
   ) return null;
 
