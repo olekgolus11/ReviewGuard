@@ -9,6 +9,16 @@ type LeadPayload = {
   website?: unknown;
 };
 
+type ValidLead = {
+  email: string;
+  restaurant: string;
+  googleUrl: string;
+  problem: string;
+  locale: "pl" | "en";
+};
+
+type LeadDelivery = (lead: ValidLead) => Promise<{ accepted: boolean }>;
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function readText(value: unknown, maxLength: number) {
@@ -29,17 +39,18 @@ function isValidUrl(value: string) {
   }
 }
 
-export async function POST(request: Request) {
+export function createLeadHandler(deliver: LeadDelivery) {
+  return async function POST(request: Request) {
   let payload: LeadPayload;
 
   try {
     payload = (await request.json()) as LeadPayload;
   } catch {
-    return Response.json({ error: "Nieprawidłowe dane formularza." }, { status: 400 });
+    return Response.json({ outcome: "malformed" }, { status: 400 });
   }
 
   if (typeof payload.website === "string" && payload.website.trim()) {
-    return Response.json({ success: true });
+    return Response.json({ outcome: "honeypot" });
   }
 
   const email = readText(payload.email, 254);
@@ -56,12 +67,28 @@ export async function POST(request: Request) {
     !isValidUrl(googleUrl) ||
     !problem
   ) {
-    return Response.json(
-      { error: "Uzupełnij poprawnie wszystkie pola formularza." },
-      { status: 400 },
-    );
+    return Response.json({ outcome: "malformed" }, { status: 400 });
   }
 
+  try {
+    const delivery = await deliver({ email, restaurant, googleUrl, problem, locale });
+    if (!delivery.accepted) {
+      return Response.json({ outcome: "delivery_failed" }, { status: 502 });
+    }
+    return Response.json({ outcome: "accepted" });
+  } catch {
+    return Response.json({ outcome: "delivery_failed" }, { status: 502 });
+  }
+  };
+}
+
+async function deliverNotification({
+  email,
+  restaurant,
+  googleUrl,
+  problem,
+  locale,
+}: ValidLead): Promise<{ accepted: boolean }> {
   const apiKey = process.env.RESEND_API_KEY;
   const notificationEmail = process.env.LEAD_NOTIFICATION_EMAIL;
   const fromEmail =
@@ -69,10 +96,7 @@ export async function POST(request: Request) {
 
   if (!apiKey || !notificationEmail) {
     console.error("Brakuje konfiguracji RESEND_API_KEY lub LEAD_NOTIFICATION_EMAIL.");
-    return Response.json(
-      { error: "Formularz jest chwilowo niedostępny." },
-      { status: 503 },
-    );
+    return { accepted: false };
   }
 
   const resend = new Resend(apiKey);
@@ -99,18 +123,14 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error("Resend nie wysłał zgłoszenia:", error);
-      return Response.json(
-        { error: "Nie udało się wysłać zgłoszenia." },
-        { status: 502 },
-      );
+      return { accepted: false };
     }
 
-    return Response.json({ success: true });
+    return { accepted: true };
   } catch (error) {
     console.error("Błąd wysyłki zgłoszenia:", error);
-    return Response.json(
-      { error: "Nie udało się wysłać zgłoszenia." },
-      { status: 502 },
-    );
+    return { accepted: false };
   }
 }
+
+export const POST = createLeadHandler(deliverNotification);

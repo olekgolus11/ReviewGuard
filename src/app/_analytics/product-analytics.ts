@@ -36,6 +36,10 @@ type ReviewProperties = Omit<PageProperties, "page_kind"> & ReviewFacts & {
   page_kind: "demo";
 };
 
+type LeadConversionProperties = PageProperties & {
+  meaningful_demo_action: boolean;
+};
+
 export type ProductAnalyticsEvent =
   | { name: "landing_page_viewed"; properties: PageProperties & { page_kind: "landing" } }
   | { name: "demo_opened"; properties: PageProperties & { page_kind: "demo" } }
@@ -48,7 +52,7 @@ export type ProductAnalyticsEvent =
       properties: ReviewProperties & { action_kind: AnalyticsActionKind };
     }
   | { name: "lead_form_viewed"; properties: PageProperties }
-  | { name: "lead_submitted"; properties: PageProperties };
+  | { name: "lead_submitted"; properties: LeadConversionProperties };
 
 export type CurrentAnalyticsPage = Extract<
   ProductAnalyticsEvent,
@@ -100,6 +104,8 @@ type StoredAnalyticsSession = {
   acquisition?: AcquisitionProperties;
   pageMilestones?: Array<"landing_page_viewed" | "demo_opened">;
   editedReviewIds?: AnalyticsReviewId[];
+  leadFormViewed?: boolean;
+  meaningfulDemoAction?: boolean;
 };
 
 function isStoredAnalyticsSession(value: unknown): value is StoredAnalyticsSession {
@@ -133,7 +139,9 @@ function isStoredAnalyticsSession(value: unknown): value is StoredAnalyticsSessi
         )
         && new Set(session.editedReviewIds).size === session.editedReviewIds.length
       )
-    );
+    )
+    && (session.leadFormViewed === undefined || typeof session.leadFormViewed === "boolean")
+    && (session.meaningfulDemoAction === undefined || typeof session.meaningfulDemoAction === "boolean");
 }
 
 function isEligibleEnvironment(
@@ -175,6 +183,7 @@ const acquisitionKeys = [
 ] as const;
 
 const pageKeys = ["locale", "page_kind", ...acquisitionKeys] as const;
+const leadConversionKeys = [...pageKeys, "meaningful_demo_action"] as const;
 const reviewKeys = [
   ...pageKeys,
   "review_id",
@@ -185,6 +194,7 @@ const reviewFactKeys = ["locale", "review_id", "rating", "review_category"] as c
 const replyActionKeys = ["locale", "page_kind", "review_id", "rating", "review_category"] as const;
 
 export const ANALYTICS_PAGE_MILESTONE_PROPERTY_KEYS = pageKeys;
+export const ANALYTICS_LEAD_CONVERSION_PROPERTY_KEYS = leadConversionKeys;
 export const ANALYTICS_REVIEW_OPENED_PROPERTY_KEYS = reviewFactKeys;
 export const ANALYTICS_REPLY_ACTION_PROPERTY_KEYS = replyActionKeys;
 export const ANALYTICS_PREPARED_REPLY_VARIANT_PROPERTY_KEYS = [
@@ -386,9 +396,22 @@ export function sanitizeProductAnalyticsEvent(
         : undefined;
     }
     case "lead_form_viewed":
-    case "lead_submitted": {
+    {
       const properties = sanitizePageProperties(value.properties);
       return properties ? { name: value.name, properties } : undefined;
+    }
+    case "lead_submitted": {
+      if (!isRecord(value.properties) || !hasOnlyKeys(value.properties, leadConversionKeys)) {
+        return undefined;
+      }
+      const { meaningful_demo_action: meaningfulDemoAction, ...pageValue } = value.properties;
+      const properties = sanitizePageProperties(pageValue);
+      return properties && typeof meaningfulDemoAction === "boolean"
+        ? {
+            name: value.name,
+            properties: { ...properties, meaningful_demo_action: meaningfulDemoAction },
+          }
+        : undefined;
     }
     default:
       return undefined;
@@ -529,13 +552,25 @@ export function createProductAnalytics(dependencies: ProductAnalyticsDependencie
       : undefined;
     const pageMilestones = session.pageMilestones ?? [];
     if (pageMilestone && pageMilestones.includes(pageMilestone)) return;
+    if (event.name === "lead_form_viewed" && session.leadFormViewed) return;
     if (pageMilestone) pageMilestones.push(pageMilestone);
     session.pageMilestones = pageMilestones;
+    if (event.name === "lead_form_viewed") session.leadFormViewed = true;
     if (event.name === "reply_edited") {
       session.editedReviewIds = [
         ...(session.editedReviewIds ?? []),
         event.properties.review_id,
       ];
+    }
+    if (replyAction) session.meaningfulDemoAction = true;
+    if (event.name === "lead_submitted") {
+      event = {
+        ...event,
+        properties: {
+          ...event.properties,
+          meaningful_demo_action: session.meaningfulDemoAction === true,
+        },
+      };
     }
     if (!persistSession(session)) return;
     if (event.name !== "review_opened" && !replyAction) {

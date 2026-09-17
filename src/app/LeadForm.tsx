@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { captureBrowserAnalyticsEvent } from "./_analytics/browser-event-gateway";
 
 type FormStatus = "idle" | "submitting" | "success" | "error";
 type ShareStatus = "idle" | "done" | "error";
@@ -31,6 +32,31 @@ type FormCopy = {
 export function LeadForm({ copy, locale }: { copy: FormCopy; locale: "pl" | "en" }) {
   const [status, setStatus] = useState<FormStatus>("idle");
   const [shareStatus, setShareStatus] = useState<ShareStatus>("idle");
+  const formRef = useRef<HTMLFormElement>(null);
+  const hasObservedForm = useRef(false);
+
+  const captureFormView = useCallback(() => {
+    if (hasObservedForm.current) return;
+    hasObservedForm.current = true;
+    captureBrowserAnalyticsEvent({
+      name: "lead_form_viewed",
+      properties: { locale, page_kind: "landing" },
+    });
+  }, [locale]);
+
+  useEffect(() => {
+    const form = formRef.current;
+    if (!form || typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting && entry.intersectionRatio >= 0.5) {
+        captureFormView();
+        observer.disconnect();
+      }
+    }, { threshold: 0.5 });
+    observer.observe(form);
+    return () => observer.disconnect();
+  }, [captureFormView]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,12 +74,26 @@ export function LeadForm({ copy, locale }: { copy: FormCopy; locale: "pl" | "en"
         body: JSON.stringify(Object.fromEntries(formData)),
       });
 
-      if (!response.ok) {
+      const result: unknown = await response.json();
+      if (
+        !response.ok
+        || !result
+        || typeof result !== "object"
+        || (result as { outcome?: unknown }).outcome !== "accepted"
+      ) {
         throw new Error("Request failed");
       }
 
       form.reset();
       setStatus("success");
+      captureBrowserAnalyticsEvent({
+        name: "lead_submitted",
+        properties: {
+          locale,
+          page_kind: "landing",
+          meaningful_demo_action: false,
+        },
+      });
     } catch {
       setStatus("error");
     }
@@ -86,7 +126,9 @@ export function LeadForm({ copy, locale }: { copy: FormCopy; locale: "pl" | "en"
   return (
     <form
       className="border border-[#17211c] bg-[#fffdf7] p-5 shadow-[10px_10px_0_#17211c]"
+      onFocus={captureFormView}
       onSubmit={handleSubmit}
+      ref={formRef}
     >
       <input name="locale" type="hidden" value={locale} />
 

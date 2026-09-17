@@ -441,7 +441,7 @@ test("Anonymous analytics sessions expire after inactivity and after their absol
   absolute.advance(19 * 60 * 1_000);
   absoluteFirst.capture({
     name: "lead_submitted",
-    properties: { locale: "en", page_kind: "demo" },
+    properties: { locale: "en", page_kind: "demo", meaningful_demo_action: false },
   });
   await absolute.settle();
 
@@ -467,6 +467,57 @@ test("granting consent again after withdrawal starts a fresh Anonymous analytics
   await harness.settle();
 
   assert.deepEqual(capturedSessionIds(harness.calls), ["session-1", "session-2"]);
+});
+
+test("genuine Demo lead conversions stay aggregate-reportable without fabricating a meaningful demo action", async () => {
+  const harness = createHarness();
+  const analytics = createProductAnalytics(harness.dependencies);
+  harness.setConsent("granted");
+  analytics.synchronizeConsent();
+
+  analytics.capture({
+    name: "lead_submitted",
+    properties: { locale: "en", page_kind: "landing", meaningful_demo_action: true },
+  });
+  analytics.capture({
+    name: "reply_approved",
+    properties: {
+      locale: "en",
+      page_kind: "demo",
+      review_id: "P1",
+      rating: 5,
+      review_category: "quick",
+    },
+  });
+  analytics.capture({
+    name: "lead_submitted",
+    properties: { locale: "en", page_kind: "landing", meaningful_demo_action: false },
+  });
+  await harness.settle();
+
+  const conversions = harness.calls.filter((call) => call.name === "lead_submitted");
+  assert.equal(conversions.length, 2);
+  assert.equal(conversions[0]?.properties && (conversions[0].properties as Record<string, unknown>).meaningful_demo_action, false);
+  assert.equal(conversions[1]?.properties && (conversions[1].properties as Record<string, unknown>).meaningful_demo_action, true);
+});
+
+test("lead-form exposure is sent once per Anonymous analytics session", async () => {
+  const harness = createHarness();
+  const analytics = createProductAnalytics(harness.dependencies);
+  harness.setConsent("granted");
+  analytics.synchronizeConsent();
+
+  analytics.capture({
+    name: "lead_form_viewed",
+    properties: { locale: "en", page_kind: "landing" },
+  });
+  analytics.capture({
+    name: "lead_form_viewed",
+    properties: { locale: "en", page_kind: "landing" },
+  });
+  await harness.settle();
+
+  assert.equal(harness.calls.filter((call) => call.name === "lead_form_viewed").length, 1);
 });
 
 test("only configured production traffic is eligible for analytics", async () => {
@@ -674,7 +725,7 @@ test("the typed contract forwards every allowed event and property", async () =>
     },
     {
       name: "lead_submitted",
-      properties: { locale: "pl", page_kind: "demo" },
+      properties: { locale: "pl", page_kind: "demo", meaningful_demo_action: false },
     },
   ] satisfies ProductAnalyticsEvent[];
 

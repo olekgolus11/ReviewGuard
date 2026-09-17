@@ -1,4 +1,5 @@
 import {
+  ANALYTICS_LEAD_CONVERSION_PROPERTY_KEYS,
   ANALYTICS_PAGE_MILESTONE_PROPERTY_KEYS,
   ANALYTICS_PREPARED_REPLY_VARIANT_PROPERTY_KEYS,
   ANALYTICS_REPLY_ACTION_PROPERTY_KEYS,
@@ -50,6 +51,7 @@ export type PostHogClient = {
 };
 
 const pageMilestoneProperties = new Set<string>(ANALYTICS_PAGE_MILESTONE_PROPERTY_KEYS);
+const leadConversionProperties = new Set<string>(ANALYTICS_LEAD_CONVERSION_PROPERTY_KEYS);
 const reviewOpenedProperties = new Set<string>(ANALYTICS_REVIEW_OPENED_PROPERTY_KEYS);
 const replyActionProperties = new Set<string>(ANALYTICS_REPLY_ACTION_PROPERTY_KEYS);
 const preparedReplyVariantProperties = new Set<string>(
@@ -62,6 +64,8 @@ function beforeSend(event: CaptureResult | null) {
   const candidateProperties: Record<string, unknown> = {};
   const allowedProperties = event.event === "review_opened"
     ? reviewOpenedProperties
+    : event.event === "lead_submitted"
+      ? leadConversionProperties
     : event.event === "prepared_reply_variant_selected"
       ? preparedReplyVariantProperties
       : event.event === "reply_edited"
@@ -86,6 +90,8 @@ function beforeSend(event: CaptureResult | null) {
       && semanticEvent.name !== "reply_approved"
       && semanticEvent.name !== "reply_copied"
       && semanticEvent.name !== "prepared_reply_variant_selected"
+      && semanticEvent.name !== "lead_form_viewed"
+      && semanticEvent.name !== "lead_submitted"
     )
   ) return null;
 

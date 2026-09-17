@@ -133,3 +133,47 @@ test("PostHog forwards every meaningful reply action with only allowlisted Revie
     { ...reply, action_kind: "variant", distinct_id: "session-1" },
   ]);
 });
+
+test("PostHog forwards lead exposure and conversion with only their anonymous allowlisted facts", async () => {
+  let options: Parameters<PostHogClient["init"]>[1] | undefined;
+  const captures: Array<{ name: string; properties?: Record<string, unknown> }> = [];
+  const client: PostHogClient = {
+    init(_apiKey, nextOptions) { options = nextOptions; },
+    capture(name, properties) { captures.push({ name, properties }); },
+    shutdown() {},
+  };
+  const transport = createPostHogTransport(async () => client);
+  await transport.initialize({ apiKey: "phc_test", host: "https://eu.i.posthog.com" });
+
+  transport.capture({
+    name: "lead_form_viewed",
+    anonymousSessionId: "session-1",
+    properties: { locale: "en", page_kind: "landing" },
+  });
+  transport.capture({
+    name: "lead_submitted",
+    anonymousSessionId: "session-1",
+    properties: { locale: "en", page_kind: "landing", meaningful_demo_action: true },
+  });
+
+  const outgoing = captures.map((capture, index) => options?.before_send({
+    uuid: `event-${index}`,
+    event: capture.name,
+    properties: {
+      ...capture.properties,
+      email: "operator@example.com",
+      restaurant: "Location name",
+      googleUrl: "https://maps.example/private",
+      problem: "Private workflow details",
+    },
+  }));
+  assert.deepEqual(outgoing.map((event) => event?.properties), [
+    { locale: "en", page_kind: "landing", distinct_id: "session-1" },
+    {
+      locale: "en",
+      page_kind: "landing",
+      meaningful_demo_action: true,
+      distinct_id: "session-1",
+    },
+  ]);
+});
