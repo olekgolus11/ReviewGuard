@@ -1,11 +1,13 @@
 import type {
   DemoLocale,
   DemoReview,
+  DemoReviewId,
   ReplyLength,
   ReplyStyle,
   ReviewCategory,
   ReviewStatus,
 } from "./demo-data";
+import type { ProductAnalyticsEvent } from "../_analytics/product-analytics";
 
 export type ReviewFilter = "all" | "violations" | ReviewCategory;
 
@@ -83,6 +85,57 @@ export function matchesReviewFilter(
   if (filter === "all") return true;
   if (filter === "violations") return false;
   return review.category === filter;
+}
+
+type ReviewSelectionState = {
+  selectedId: DemoReviewId;
+  viewed: DemoReviewId[];
+};
+
+export function appendIfMissing<T>(items: T[], next: T) {
+  return items.includes(next) ? items : [...items, next];
+}
+
+export function initialReviewSelection(reviews: DemoReview[]): ReviewSelectionState {
+  const first = reviews[0];
+  if (!first) throw new Error("The demo review sample must not be empty");
+  return { selectedId: first.id, viewed: [] };
+}
+
+export function selectReviewInSession<T extends ReviewSelectionState>(
+  state: T,
+  reviewId: DemoReviewId,
+): T {
+  return {
+    ...state,
+    selectedId: reviewId,
+    viewed: appendIfMissing(state.viewed, reviewId),
+  };
+}
+
+export function selectionAfterFilterChange<T extends ReviewSelectionState>(
+  state: T,
+  reviews: DemoReview[],
+  filter: ReviewFilter,
+): T {
+  const matches = reviews.filter((review) => matchesReviewFilter(review, filter));
+  if (matches.some((review) => review.id === state.selectedId) || !matches[0]) return state;
+  return selectReviewInSession(state, matches[0].id);
+}
+
+export function reviewOpenedEvent(
+  locale: DemoLocale,
+  review: DemoReview,
+): Extract<ProductAnalyticsEvent, { name: "review_opened" }> {
+  return {
+    name: "review_opened",
+    properties: {
+      locale,
+      review_id: review.id,
+      rating: review.rating,
+      review_category: review.category,
+    },
+  };
 }
 
 export function preparedReply(review: DemoReview, selection: ReplySelection) {

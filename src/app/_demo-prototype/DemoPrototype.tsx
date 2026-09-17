@@ -6,35 +6,42 @@ import {
   demoReviews,
   type DemoLocale,
   type DemoReview,
+  type DemoReviewId,
   type ReplyLength,
   type ReplyStyle,
   type ReviewCategory,
   type ReviewStatus,
 } from "./demo-data";
 import {
+  appendIfMissing,
   invalidateApproval,
+  initialReviewSelection,
   matchesReviewFilter,
   nextReplyStatus,
   preparedReply,
+  selectReviewInSession,
+  reviewOpenedEvent,
+  selectionAfterFilterChange,
   sessionSummary,
   type ReviewFilter,
 } from "./demo-session";
 import styles from "./prototype.module.css";
 import { PrivacyControls } from "../_consent/PrivacyControls";
+import { captureBrowserAnalyticsEvent } from "../_analytics/browser-event-gateway";
 
 // The validated review workspace: control desk on desktop, focus mode on mobile.
 
 type SessionState = {
-  selectedId: string;
+  selectedId: DemoReviewId;
   statuses: Record<string, ReviewStatus>;
   replyStyles: Record<string, ReplyStyle>;
   replyVersions: Record<string, number>;
   lengths: Record<string, ReplyLength>;
   drafts: Record<DemoLocale, Record<string, string>>;
   managerNotes: Record<DemoLocale, Record<string, string>>;
-  viewed: string[];
-  edited: string[];
-  copied: string[];
+  viewed: DemoReviewId[];
+  edited: DemoReviewId[];
+  copied: DemoReviewId[];
 };
 
 const STORAGE_KEY = "reviewguard-demo-prototype-v1";
@@ -167,21 +174,16 @@ const ui = {
 
 function createInitialState(): SessionState {
   return {
-    selectedId: demoReviews[0].id,
+    ...initialReviewSelection(demoReviews),
     statuses: Object.fromEntries(demoReviews.map((review) => [review.id, review.initialStatus])),
     replyStyles: Object.fromEntries(demoReviews.map((review) => [review.id, "warm"])),
     replyVersions: Object.fromEntries(demoReviews.map((review) => [review.id, 0])),
     lengths: Object.fromEntries(demoReviews.map((review) => [review.id, "standard"])),
     drafts: { pl: {}, en: {} },
     managerNotes: { pl: {}, en: {} },
-    viewed: [],
     edited: [],
     copied: [],
   };
-}
-
-function unique(items: string[], next: string) {
-  return items.includes(next) ? items : [...items, next];
 }
 
 function withoutKey(record: Record<string, string>, key: string) {
@@ -209,7 +211,7 @@ type WorkspaceProps = {
   filtered: DemoReview[];
   filter: ReviewFilter;
   setFilter: (filter: ReviewFilter) => void;
-  selectReview: (id: string) => void;
+  selectReview: (id: DemoReviewId) => void;
   setState: React.Dispatch<React.SetStateAction<SessionState>>;
   openCta: () => void;
 };
@@ -342,7 +344,10 @@ function ReplyEditor({ locale, review, state, setState }: Pick<WorkspaceProps, "
     } catch {
       // The visual prototype still records the intent when clipboard access is unavailable.
     }
-    prepare((current) => ({ ...current, copied: unique(current.copied, review.id) }));
+    prepare((current) => ({
+      ...current,
+      copied: appendIfMissing(current.copied, review.id),
+    }));
   }
 
   return (
@@ -431,7 +436,7 @@ function ReplyEditor({ locale, review, state, setState }: Pick<WorkspaceProps, "
                   ...current.drafts,
                   [locale]: { ...current.drafts[locale], [review.id]: reply },
                 },
-                edited: unique(current.edited, review.id),
+                edited: appendIfMissing(current.edited, review.id),
               }, review.id, "ready"))}
               type="button"
             >
@@ -450,7 +455,7 @@ function ReplyEditor({ locale, review, state, setState }: Pick<WorkspaceProps, "
             ...current.drafts,
             [locale]: { ...current.drafts[locale], [review.id]: event.target.value },
           },
-          edited: unique(current.edited, review.id),
+          edited: appendIfMissing(current.edited, review.id),
         }, review.id, "ready"))}
         value={reply}
       />
@@ -515,8 +520,8 @@ function ReviewStepper({
 }: {
   locale: DemoLocale;
   reviews: DemoReview[];
-  selectedId: string;
-  selectReview: (id: string) => void;
+  selectedId: DemoReviewId;
+  selectReview: (id: DemoReviewId) => void;
   dark?: boolean;
 }) {
   const c = ui[locale];
@@ -716,23 +721,16 @@ export function DemoPrototype({
 
   const selected = demoReviews.find((review) => review.id === state.selectedId) ?? demoReviews[0];
 
-  function selectReview(id: string) {
-    setState((current) => ({ ...current, selectedId: id, viewed: unique(current.viewed, id) }));
+  function selectReview(id: DemoReviewId) {
+    const review = demoReviews.find((candidate) => candidate.id === id);
+    if (!review) return;
+    captureBrowserAnalyticsEvent(reviewOpenedEvent(locale, review));
+    setState((current) => selectReviewInSession(current, review.id));
   }
 
   function changeFilter(nextFilter: ReviewFilter) {
     setFilter(nextFilter);
-    setState((current) => {
-      const matches = demoReviews.filter((review) => (
-        matchesReviewFilter(review, nextFilter)
-      ));
-      if (matches.some((review) => review.id === current.selectedId) || !matches[0]) return current;
-      return {
-        ...current,
-        selectedId: matches[0].id,
-        viewed: unique(current.viewed, matches[0].id),
-      };
-    });
+    setState((current) => selectionAfterFilterChange(current, demoReviews, nextFilter));
   }
 
   const props: WorkspaceProps = {

@@ -21,6 +21,7 @@ export function connectProductAnalyticsRuntime(
   synchronize();
 
   return {
+    capture: analytics.capture,
     synchronizePage: synchronize,
     unsubscribeConsent: disconnectConsent,
   };

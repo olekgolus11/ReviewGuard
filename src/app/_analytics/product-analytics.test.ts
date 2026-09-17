@@ -111,6 +111,60 @@ test("analytics discards actions until consent and captures the current page aft
   assert.equal(harness.calls.length, 2);
 });
 
+test("review opening is discarded without consent and outside eligible production", async () => {
+  const event = {
+    name: "review_opened" as const,
+    properties: {
+      locale: "en" as const,
+      review_id: "P1" as const,
+      rating: 5 as const,
+      review_category: "quick" as const,
+    },
+  };
+  const withoutConsent = createHarness();
+  const consentGateway = createProductAnalytics(withoutConsent.dependencies);
+  consentGateway.capture(event);
+  await withoutConsent.settle();
+
+  const outsideProduction = createHarness();
+  outsideProduction.dependencies.environment.deployment = "preview";
+  outsideProduction.setConsent("granted");
+  const environmentGateway = createProductAnalytics(outsideProduction.dependencies);
+  environmentGateway.synchronizeConsent();
+  environmentGateway.capture(event);
+  await outsideProduction.settle();
+
+  assert.equal(withoutConsent.calls.length, 0);
+  assert.equal(outsideProduction.calls.length, 0);
+});
+
+test("repeated review openings remain separate raw events in one Anonymous analytics session", async () => {
+  const harness = createHarness();
+  const analytics = createProductAnalytics(harness.dependencies);
+  const event = {
+    name: "review_opened" as const,
+    properties: {
+      locale: "pl" as const,
+      review_id: "M1" as const,
+      rating: 3 as const,
+      review_category: "personalize" as const,
+    },
+  };
+  harness.setConsent("granted");
+  analytics.synchronizeConsent();
+
+  analytics.capture(event);
+  analytics.capture(event);
+  await harness.settle();
+
+  const captures = harness.calls.filter((call) => call.operation === "capture");
+  assert.equal(captures.length, 2);
+  assert.deepEqual(captures.map((capture) => capture.anonymousSessionId), [
+    "session-1",
+    "session-1",
+  ]);
+});
+
 test("rejection and withdrawal prevent capture, and withdrawal clears the tab identity", async () => {
   const harness = createHarness();
   const analytics = createProductAnalytics(harness.dependencies);
@@ -527,7 +581,15 @@ test("the typed contract forwards every allowed event and property", async () =>
       name: "demo_opened",
       properties: { locale: "pl", page_kind: "demo" },
     },
-    { name: "review_opened", properties: review },
+    {
+      name: "review_opened",
+      properties: {
+        locale: review.locale,
+        review_id: review.review_id,
+        rating: review.rating,
+        review_category: review.review_category,
+      },
+    },
     { name: "reply_edited", properties: review },
     { name: "reply_approved", properties: review },
     { name: "reply_copied", properties: review },

@@ -1,14 +1,27 @@
 export type DemoLocale = "pl" | "en";
 export type ReviewStatus = "new" | "context" | "ready" | "approved";
 export type ReviewCategory = "quick" | "personalize" | "caution";
+export type DemoReviewId =
+  | "P1"
+  | "P2"
+  | "P3"
+  | "P4"
+  | "M1"
+  | "M2"
+  | "M3"
+  | "N1"
+  | "N2"
+  | "N3"
+  | "C1";
+export type ReviewRating = 1 | 2 | 3 | 4 | 5;
 export type ReplyStyle = "warm" | "concise" | "casual";
 export type ReplyLength = "short" | "standard";
 
 type LocalizedText = Record<DemoLocale, string>;
 
 export type DemoReview = {
-  id: string;
-  rating: number;
+  id: DemoReviewId;
+  rating: ReviewRating;
   age: LocalizedText;
   category: ReviewCategory;
   initialStatus: ReviewStatus;

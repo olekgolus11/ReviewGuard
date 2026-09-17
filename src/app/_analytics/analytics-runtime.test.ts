@@ -65,6 +65,15 @@ test("consent and navigation produce only current, sanitized, once-per-session p
 
   consent.synchronize("granted");
   await new Promise((resolve) => setTimeout(resolve, 0));
+  runtime.capture({
+    name: "review_opened",
+    properties: {
+      locale: "en",
+      review_id: "P1",
+      rating: 5,
+      review_category: "quick",
+    },
+  });
   runtime.synchronizePage();
   currentPage = {
     name: "landing_page_viewed",
@@ -82,6 +91,16 @@ test("consent and navigation produce only current, sanitized, once-per-session p
         locale: "en",
         page_kind: "demo",
         device_class: "mobile",
+        distinct_id: "session-1",
+      },
+    },
+    {
+      event: "review_opened",
+      properties: {
+        locale: "en",
+        review_id: "P1",
+        rating: 5,
+        review_category: "quick",
         distinct_id: "session-1",
       },
     },

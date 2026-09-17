@@ -1,5 +1,6 @@
 import {
   ANALYTICS_PAGE_MILESTONE_PROPERTY_KEYS,
+  ANALYTICS_REVIEW_OPENED_PROPERTY_KEYS,
   POSTHOG_EU_INGESTION_HOST,
   sanitizeProductAnalyticsEvent,
   type AnalyticsConfiguration,
@@ -47,13 +48,17 @@ export type PostHogClient = {
 };
 
 const pageMilestoneProperties = new Set<string>(ANALYTICS_PAGE_MILESTONE_PROPERTY_KEYS);
+const reviewOpenedProperties = new Set<string>(ANALYTICS_REVIEW_OPENED_PROPERTY_KEYS);
 
 function beforeSend(event: CaptureResult | null) {
   if (!event) return null;
 
   const candidateProperties: Record<string, unknown> = {};
+  const allowedProperties = event.event === "review_opened"
+    ? reviewOpenedProperties
+    : pageMilestoneProperties;
   for (const [key, value] of Object.entries(event.properties ?? {})) {
-    if (pageMilestoneProperties.has(key)) candidateProperties[key] = value;
+    if (allowedProperties.has(key)) candidateProperties[key] = value;
   }
   const semanticEvent = sanitizeProductAnalyticsEvent({
     name: event.event,
@@ -61,7 +66,11 @@ function beforeSend(event: CaptureResult | null) {
   });
   if (
     !semanticEvent
-    || (semanticEvent.name !== "landing_page_viewed" && semanticEvent.name !== "demo_opened")
+    || (
+      semanticEvent.name !== "landing_page_viewed"
+      && semanticEvent.name !== "demo_opened"
+      && semanticEvent.name !== "review_opened"
+    )
   ) return null;
 
   const properties: Record<string, unknown> = { ...semanticEvent.properties };

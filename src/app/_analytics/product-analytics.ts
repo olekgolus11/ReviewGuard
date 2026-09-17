@@ -1,19 +1,10 @@
+import type { DemoReviewId, ReviewRating } from "../_demo-prototype/demo-data";
+
 export type AnalyticsConsent = "unknown" | "granted" | "denied";
 export type AnalyticsLocale = "pl" | "en";
 export type AnalyticsPageKind = "landing" | "demo";
 export type AnalyticsDeviceClass = "desktop" | "tablet" | "mobile";
-export type AnalyticsReviewId =
-  | "P1"
-  | "P2"
-  | "P3"
-  | "P4"
-  | "M1"
-  | "M2"
-  | "M3"
-  | "N1"
-  | "N2"
-  | "N3"
-  | "C1";
+export type AnalyticsReviewId = DemoReviewId;
 export type AnalyticsReviewCategory = "quick" | "personalize" | "caution";
 export type AnalyticsActionKind = "style" | "length" | "variant";
 
@@ -34,17 +25,21 @@ type PageProperties = AcquisitionProperties & {
   page_kind: AnalyticsPageKind;
 };
 
-type ReviewProperties = Omit<PageProperties, "page_kind"> & {
-  page_kind: "demo";
+type ReviewFacts = {
+  locale: AnalyticsLocale;
   review_id: AnalyticsReviewId;
-  rating: 1 | 2 | 3 | 4 | 5;
+  rating: ReviewRating;
   review_category: AnalyticsReviewCategory;
+};
+
+type ReviewProperties = Omit<PageProperties, "page_kind"> & ReviewFacts & {
+  page_kind: "demo";
 };
 
 export type ProductAnalyticsEvent =
   | { name: "landing_page_viewed"; properties: PageProperties & { page_kind: "landing" } }
   | { name: "demo_opened"; properties: PageProperties & { page_kind: "demo" } }
-  | { name: "review_opened"; properties: ReviewProperties }
+  | { name: "review_opened"; properties: ReviewFacts }
   | { name: "reply_edited"; properties: ReviewProperties }
   | { name: "reply_approved"; properties: ReviewProperties }
   | { name: "reply_copied"; properties: ReviewProperties }
@@ -175,8 +170,10 @@ const reviewKeys = [
   "rating",
   "review_category",
 ] as const;
+const reviewFactKeys = ["locale", "review_id", "rating", "review_category"] as const;
 
 export const ANALYTICS_PAGE_MILESTONE_PROPERTY_KEYS = pageKeys;
+export const ANALYTICS_REVIEW_OPENED_PROPERTY_KEYS = reviewFactKeys;
 
 const reviewFacts: Record<
   AnalyticsReviewId,
@@ -300,6 +297,26 @@ function sanitizeReviewProperties(value: unknown) {
   } satisfies ReviewProperties;
 }
 
+function sanitizeReviewFacts(value: unknown): ReviewFacts | undefined {
+  if (!isRecord(value) || !hasOnlyKeys(value, reviewFactKeys)) return undefined;
+  if (value.locale !== "pl" && value.locale !== "en") return undefined;
+  if (typeof value.review_id !== "string" || !(value.review_id in reviewFacts)) {
+    return undefined;
+  }
+  const reviewId = value.review_id as AnalyticsReviewId;
+  const expected = reviewFacts[reviewId];
+  if (
+    value.rating !== expected.rating
+    || value.review_category !== expected.review_category
+  ) return undefined;
+  return {
+    locale: value.locale,
+    review_id: reviewId,
+    rating: expected.rating,
+    review_category: expected.review_category,
+  };
+}
+
 export function sanitizeProductAnalyticsEvent(
   value: unknown,
 ): ProductAnalyticsEvent | undefined {
@@ -322,7 +339,10 @@ export function sanitizeProductAnalyticsEvent(
         ? { name: value.name, properties: { ...properties, page_kind: "demo" } }
         : undefined;
     }
-    case "review_opened":
+    case "review_opened": {
+      const properties = sanitizeReviewFacts(value.properties);
+      return properties ? { name: value.name, properties } : undefined;
+    }
     case "reply_edited":
     case "reply_approved":
     case "reply_copied": {
@@ -469,7 +489,9 @@ export function createProductAnalytics(dependencies: ProductAnalyticsDependencie
     if (!event) return;
     const session = sessionForActivity();
     if (!session) return;
-    const eventAcquisition = acquisitionFromPage(event.properties);
+    const eventAcquisition = event.name === "review_opened"
+      ? {}
+      : acquisitionFromPage(event.properties);
     if (!session.acquisition && Object.keys(eventAcquisition).length > 0) {
       session.acquisition = eventAcquisition;
     }
@@ -481,10 +503,12 @@ export function createProductAnalytics(dependencies: ProductAnalyticsDependencie
     if (pageMilestone) pageMilestones.push(pageMilestone);
     session.pageMilestones = pageMilestones;
     if (!persistSession(session)) return;
-    event = {
-      ...event,
-      properties: { ...event.properties, ...session.acquisition },
-    } as ProductAnalyticsEvent;
+    if (event.name !== "review_opened") {
+      event = {
+        ...event,
+        properties: { ...event.properties, ...session.acquisition },
+      } as ProductAnalyticsEvent;
+    }
     const activeConsentGeneration = consentGeneration;
     const transportEvent = {
       ...event,

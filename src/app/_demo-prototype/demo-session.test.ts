@@ -3,10 +3,58 @@ import test from "node:test";
 import { demoReviews } from "./demo-data.ts";
 import {
   invalidateApproval,
+  initialReviewSelection,
   matchesReviewFilter,
+  selectReviewInSession,
+  reviewOpenedEvent,
+  selectionAfterFilterChange,
   preparedReply,
   sessionSummary,
 } from "./demo-session.ts";
+
+test("direct review selection records the browser-local opening and emits the allowlisted analytics event", () => {
+  const review = demoReviews.find((candidate) => candidate.id === "M1");
+  assert.ok(review);
+  const initial = { selectedId: "P1" as const, viewed: [] };
+
+  const selected = selectReviewInSession(initial, review.id);
+  const event = reviewOpenedEvent("pl", review);
+
+  assert.deepEqual(selected, { selectedId: "M1", viewed: ["M1"] });
+  assert.deepEqual(event, {
+    name: "review_opened",
+    properties: {
+      locale: "pl",
+      review_id: "M1",
+      rating: 3,
+      review_category: "personalize",
+    },
+  });
+});
+
+test("stepper navigation keeps repeated review selections as raw events", () => {
+  const review = demoReviews.find((candidate) => candidate.id === "P2");
+  assert.ok(review);
+  const initial = { selectedId: "P1" as const, viewed: [] };
+
+  const first = selectReviewInSession(initial, review.id);
+  const second = selectReviewInSession(first, review.id);
+  const events = [reviewOpenedEvent("en", review), reviewOpenedEvent("en", review)];
+
+  assert.deepEqual(second, { selectedId: "P2", viewed: ["P2"] });
+  assert.equal(events.length, 2);
+  assert.deepEqual(events[0], events[1]);
+});
+
+test("initial rendering starts unopened and filter-driven selection changes only the browser-local summary", () => {
+  const initial = initialReviewSelection(demoReviews);
+
+  const selected = selectionAfterFilterChange(initial, demoReviews, "caution");
+
+  assert.deepEqual(initial, { selectedId: "P1", viewed: [] });
+  assert.equal(selected.selectedId, "N1");
+  assert.deepEqual(selected.viewed, ["N1"]);
+});
 
 test("regeneration selects another reply prepared for the same review and style", () => {
   const review = demoReviews[0];

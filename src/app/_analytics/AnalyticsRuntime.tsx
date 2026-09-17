@@ -15,6 +15,7 @@ import {
   type ProductAnalyticsDependencies,
   POSTHOG_EU_INGESTION_HOST,
 } from "./product-analytics";
+import { subscribeBrowserAnalyticsEvents } from "./browser-event-gateway";
 
 function safeBrowserSessionStorage(): ProductAnalyticsDependencies["storage"] {
   return {
@@ -83,8 +84,10 @@ export function AnalyticsRuntime({
       currentPage: () => currentBrowserPage(locale),
     });
     runtimeRef.current = runtime;
+    const unsubscribeBrowserEvents = subscribeBrowserAnalyticsEvents(runtime.capture);
 
     return () => {
+      unsubscribeBrowserEvents();
       runtime.unsubscribeConsent();
       runtimeRef.current = undefined;
     };
