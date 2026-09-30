@@ -17,18 +17,18 @@ An agent can verify the checked-in event contract and the deployed browser behav
 
 ## Stop gate: Cookiebot Free allowance
 
-Before enabling analytics, the product owner must run or refresh Cookiebot's production-domain scan for `reviewguard.pl`, retain its result, then open the current Cookiebot account's **Free** plan/usage view. Record the scan's domain/page scope, the allowance shown by the plan, and the amount already in use.
+Before enabling analytics, the product owner must run or refresh Cookiebot's production-domain scan for `review-guard-ebon.vercel.app`, retain its result, then open the current Cookiebot account's **Free** plan/usage view. Record the scan's domain/page scope, the allowance shown by the plan, and the amount already in use. If the production domain changes, repeat this check for the new hostname before enabling analytics there.
 
 | Check | Pass condition | If it fails |
 | --- | --- | --- |
-| Production scan and Free allowance | The completed `reviewguard.pl` scan is within the displayed Free allowance; `www.reviewguard.pl` is included only when it serves this app | Stop. Do not enable PostHog, upgrade Cookiebot, buy a plan, or replace Cookiebot with another CMP. Record the constraint and return it to the product owner. |
+| Production scan and Free allowance | The completed `review-guard-ebon.vercel.app` scan is within the displayed Free allowance | Stop. Do not enable PostHog, upgrade Cookiebot, buy a plan, or replace Cookiebot with another CMP. Record the constraint and return it to the product owner. |
 | Domain scope | No localhost or preview hostname is in the production group | Remove the non-production hostname before continuing. |
 
 Only after both checks pass may the rollout proceed. This prevents analytics from being enabled in a configuration whose consent boundary is not licensed for the production domain.
 
 ## Provision Cookiebot
 
-1. Register `reviewguard.pl` as the production domain. Add `www.reviewguard.pl` only if it also serves the production application.
+1. Register `review-guard-ebon.vercel.app` as the production domain. Add a future custom domain only when it serves the production application, then repeat the scan and Free-allowance check for it.
 2. Add Polish and English content variants. The application fixes `data-culture` to `PL` on `/pl` routes and `EN` on English routes.
 3. Select **Explicit Consent**, distribute to **All visitors**, and use **Multilevel** with **Reject all / Selection / Allow all**.
 4. Leave Preferences, Statistics, and Marketing unchecked by default. Necessary may remain selected because it is not optional.
