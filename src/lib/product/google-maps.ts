@@ -5,8 +5,8 @@ import type { ImportSnapshot, Review, ReviewMedia } from "./types";
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 const NAVIGATION_TIMEOUT_MS = 45_000;
-const REVIEW_WAIT_MS = 12_000;
-const MAX_SCROLL_ROUNDS = 30;
+const REVIEW_WAIT_MS = 25_000;
+const MAX_SCROLL_ROUNDS = 50;
 const COLLECTION_TIMEOUT_MS = 45_000;
 
 type PlaceDetails = { name: string | null; address: string | null; totalReviewCount: number | null };
@@ -244,24 +244,32 @@ async function expandVisibleReviews(cards: Locator, limit: number): Promise<void
   }
 }
 
-async function collectReviews(page: Page, limit: number, sortedNewest: boolean): Promise<{ reviews: Review[]; stopReason: string }> {
+async function collectReviews(page: Page, limit: number, sortedNewest: boolean, headless: boolean): Promise<{ reviews: Review[]; stopReason: string }> {
   const cards = page.locator(".jftiEf[data-review-id], .jftiEf[data-sort-id], [data-review-id].jftiEf");
   const started = Date.now();
+  const collectionTimeout = headless ? 6_000 : COLLECTION_TIMEOUT_MS;
+  const quietRoundLimit = headless ? 2 : 10;
   let rounds = 0;
   let previousCount = -1;
   let quietRounds = 0;
-  while (Date.now() - started < COLLECTION_TIMEOUT_MS && rounds < MAX_SCROLL_ROUNDS) {
+  while (Date.now() - started < collectionTimeout && rounds < MAX_SCROLL_ROUNDS) {
     const count = await cards.count().catch(() => 0);
-    if (count >= limit || (count > 0 && count === previousCount && quietRounds >= 2)) break;
+    if (count >= limit || (count > 0 && count === previousCount && quietRounds >= quietRoundLimit)) break;
     if (count === previousCount) quietRounds += 1; else quietRounds = 0;
     previousCount = count;
-    const scrollable = page.locator('div[role="feed"]').first();
-    if (await scrollable.count().catch(() => 0)) {
-      await scrollable.evaluate((node) => { node.scrollTop = node.scrollHeight; }).catch(() => undefined);
-    } else if (count) {
-      await cards.nth(count - 1).scrollIntoViewIfNeeded().catch(() => undefined);
+    if (count) {
+      await cards.nth(count - 1).evaluate((card) => {
+        for (let parent = card.parentElement; parent; parent = parent.parentElement) {
+          const style = getComputedStyle(parent);
+          if ((style.overflowY === "auto" || style.overflowY === "scroll") && parent.scrollHeight > parent.clientHeight) {
+            parent.scrollTop = parent.scrollHeight;
+            return;
+          }
+        }
+        card.scrollIntoView({ block: "end" });
+      }).catch(() => undefined);
     }
-    await page.waitForTimeout(Math.min(1_000 + rounds * 100, 1_800));
+    await page.waitForTimeout(1_600);
     rounds += 1;
   }
   await expandVisibleReviews(cards, limit);
@@ -275,7 +283,7 @@ async function collectReviews(page: Page, limit: number, sortedNewest: boolean):
     ? "Google Maps loaded the place but exposed no review cards (limited view, unavailable reviews, or blocked access)."
     : reviews.length >= limit
       ? `Requested ${sortedNewest ? "newest " : "up to "}${limit} reviews; stopped at the requested limit.`
-      : Date.now() - started >= COLLECTION_TIMEOUT_MS || rounds >= MAX_SCROLL_ROUNDS
+      : Date.now() - started >= collectionTimeout || rounds >= MAX_SCROLL_ROUNDS
         ? `Zakończono po osiągnięciu limitu czasu przewijania; pobrano ${reviews.length} opinii.`
         : `Google Maps nie udostępniło kolejnych kart po pobraniu ${reviews.length} opinii.`;
   return { reviews, stopReason: sortedNewest ? stopReason : `${stopReason} Google’s newest sort control was unavailable; ordering is unverified.` };
@@ -339,7 +347,8 @@ async function importGoogleMapsWithMode(url: string, requestedLimit: number, hea
         location.totalReviewCount = reviewDetails.totalReviewCount ?? location.totalReviewCount;
         const orderedNewest = await setNewestSort(page);
         sort = orderedNewest ? "newest" : "unknown (Google sort control unavailable)";
-        const result = await collectReviews(page, requestedLimit, orderedNewest);
+        await page.waitForTimeout(1_200);
+        const result = await collectReviews(page, requestedLimit, orderedNewest, headless);
         reviews = result.reviews;
         stopReason = result.stopReason;
       } else {
@@ -351,9 +360,17 @@ async function importGoogleMapsWithMode(url: string, requestedLimit: number, hea
   } finally {
     await browser?.close().catch(() => undefined);
   }
-  if (headless && (reviews.length === 0 || (reviews.length < requestedLimit && sort !== "newest"))) {
-    return importGoogleMapsWithMode(url, requestedLimit, false);
+  let fallbackNote: string | null = null;
+  if (headless && reviews.length < requestedLimit) {
+    try {
+      const visibleSnapshot = await importGoogleMapsWithMode(url, requestedLimit, false);
+      if (visibleSnapshot.reviews.length > reviews.length) return visibleSnapshot;
+      fallbackNote = `Visible-browser retry returned ${visibleSnapshot.reviews.length}; retained the larger headless sample of ${reviews.length}.`;
+    } catch (error) {
+      fallbackNote = `Visible-browser retry failed: ${error instanceof Error ? error.message : "unknown error"}.`;
+    }
   }
+  if (fallbackNote) stopReason = `${stopReason} ${fallbackNote}`;
   if (reviews.length === 0) throw new Error(`${stopReason}${page ? ` Resolved page: ${page.url()}` : ""}`);
   return {
     id: randomUUID(),
