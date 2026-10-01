@@ -18,7 +18,7 @@ Set `AI_GATEWAY_API_KEY` in `.env.local` to a Vercel AI Gateway API key. Never u
 pnpm dev
 ```
 
-Open `http://localhost:3000/workspace`, paste a Google Maps place URL (including a `maps.app.goo.gl` shortlink), and import up to 200 reviews. The default is 50. The scraper expands review text, selects newest sorting when available, and reports observed coverage; it does not claim complete coverage unless the count can be confirmed. A blocked browser, consent screen, missing place or empty extraction is an error, never a fixture fallback.
+Open `http://localhost:3000/workspace`, paste a Google Maps place URL (including a `maps.app.goo.gl` shortlink), and import up to 200 reviews. The default is 50. The scraper expands review text, selects newest sorting when available, and reports the observed order and coverage; it does not claim complete coverage unless the count can be confirmed. A blocked browser, unresolved consent screen, missing place or empty extraction is an error, never a fixture fallback. Google may restrict an invisible browser to a limited guest view; the importer then retries once in a temporary visible browser and closes it afterward. No existing browser profile, Google account or stored user cookies are used. This retry requires a desktop display (or Xvfb on Linux).
 
 On Linux install browser system dependencies with `pnpm exec playwright install --with-deps chromium`. An existing Chromium can be selected with `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` if needed.
 
@@ -34,7 +34,7 @@ Prefer two independent human labellers and reconcile disagreements before evalua
 
 The report uses only reviews with both a reference label and model assessment. Rows are reference actions; columns are model predictions. It shows sample size, missing assessments, accuracy and precision/recall per action; undefined metrics stay undefined, rather than being presented as perfect results. Reply quality requires separate human assessment of factual grounding, specificity, tone, privacy and unsupported promises.
 
-Export JSON to freeze the current review snapshot, assessments with model/policy version, reply suggestions, and independent reference labels. Re-importing unchanged reviews retains work; changed review content or a different location invalidates the associated assessments, replies and reference labels. Original import snapshots are also retained on the server.
+Export JSON to freeze the current review snapshot, assessments with model/policy version, original generated reply text alongside human edits, and independent reference labels. Re-importing unchanged reviews retains work; changed review content or a different location invalidates the associated assessments, replies and reference labels. Original import snapshots are also retained on the server.
 
 ## Storage and hosting
 

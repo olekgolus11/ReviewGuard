@@ -7,15 +7,13 @@ const MAX_LIMIT = 200;
 const NAVIGATION_TIMEOUT_MS = 45_000;
 const REVIEW_WAIT_MS = 12_000;
 const MAX_SCROLL_ROUNDS = 30;
+const COLLECTION_TIMEOUT_MS = 45_000;
 
 type PlaceDetails = { name: string | null; address: string | null; totalReviewCount: number | null };
 
 function isGoogleDomain(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/\.$/, "");
-  return host === "google.com" || host.endsWith(".google.com") ||
-    /^google\.(?:[a-z]{2,3}|[a-z]{2}\.[a-z]{2})$/.test(host) ||
-    /^maps\.google\.(?:[a-z]{2,3}|[a-z]{2}\.[a-z]{2})$/.test(host) ||
-    /^consent\.google\.(?:[a-z]{2,3}|[a-z]{2}\.[a-z]{2})$/.test(host);
+  return /(?:^|\.)google\.(?:com|[a-z]{2,3}|[a-z]{2}\.[a-z]{2})$/.test(host);
 }
 
 function isAllowedMapsUrl(raw: string): boolean {
@@ -23,7 +21,7 @@ function isAllowedMapsUrl(raw: string): boolean {
     const url = new URL(raw);
     if (url.protocol !== "https:" || url.username || url.password || url.port) return false;
     return url.hostname.toLowerCase() === "maps.app.goo.gl" ||
-      (isGoogleDomain(url.hostname) && (/\/maps(?:\/|$)/.test(url.pathname) || url.hostname.startsWith("consent.")));
+      (isGoogleDomain(url.hostname) && /\/maps(?:\/|$)/.test(url.pathname));
   } catch {
     return false;
   }
@@ -59,7 +57,12 @@ function stableId(value: string): string {
 }
 
 function textContent(locator: Locator): Promise<string | null> {
-  return locator.first().innerText({ timeout: 1_000 }).then((text) => text.trim() || null).catch(() => null);
+  return locator.count().then(async (count) => count ? (await locator.first().innerText({ timeout: 1_000 }).catch(() => "")).trim() || null : null).catch(() => null);
+}
+
+async function firstAttribute(locator: Locator, name: string): Promise<string | null> {
+  if (!await locator.count().catch(() => 0)) return null;
+  return locator.first().getAttribute(name, { timeout: 1_000 }).catch(() => null);
 }
 
 function normalizedText(value: string | null): string | null {
@@ -68,7 +71,10 @@ function normalizedText(value: string | null): string | null {
 
 function parseReviewCount(value: string | null): number | null {
   if (!value) return null;
-  const match = value.replace(/\u00a0/g, " ").match(/([\d.,\s]+)\s*(?:reviews?|opin(?:ie|ii)|recenz(?:ji|ja)|avis|bewertungen|reseñas|reseñas?)/i);
+  const normalized = value.replace(/\u00a0/g, " ").trim();
+  const reviewWord = "(?:reviews?|opin(?:ie|ii)|recenz(?:ji|ja)|avis|bewertungen|reseñas?)";
+  const match = normalized.match(new RegExp(`^\\s*${reviewWord}\\s*[:(]?\\s*(\\d[\\d., ]*)$`, "i")) ??
+    normalized.match(new RegExp(`^\\s*(\\d[\\d., ]*)\\s*${reviewWord}\\s*$`, "i"));
   if (!match) return null;
   const digits = match[1].replace(/\D/g, "");
   return digits ? Number(digits) : null;
@@ -89,7 +95,7 @@ function dateToIso(label: string | null): string | null {
 }
 
 async function answerConsent(page: Page): Promise<boolean> {
-  for (const pattern of [/Reject all/i, /Odrzuć wszystko/i, /Reject all cookies/i]) {
+  for (const pattern of [/Accept all/i, /Zaakceptuj wszystko/i]) {
     const button = page.getByRole("button", { name: pattern }).first();
     await button.waitFor({ state: "visible", timeout: 2_000 }).catch(() => undefined);
     if (await button.isVisible().catch(() => false)) {
@@ -103,13 +109,17 @@ async function answerConsent(page: Page): Promise<boolean> {
 
 async function getPlaceDetails(page: Page): Promise<PlaceDetails> {
   const name = normalizedText(await page.locator("h1").first().innerText().catch(() => null));
-  const addressLabel = await page.locator('button[aria-label^="Address:"], button[aria-label^="Adres:"]').first().getAttribute("aria-label").catch(() => null);
+  const addressLabel = await firstAttribute(page.locator('button[aria-label^="Address:"], button[aria-label^="Adres:"]'), "aria-label");
   const address = addressLabel?.replace(/^(Address|Adres):\s*/i, "").trim() || null;
-  const body = await page.locator("body").innerText().catch(() => "");
-  let totalReviewCount = parseReviewCount(body);
+  const countLabels = await page.locator("button").evaluateAll((nodes) => nodes.map((node) => node.textContent ?? ""));
+  let totalReviewCount: number | null = null;
+  for (const label of countLabels) {
+    totalReviewCount = parseReviewCount(label);
+    if (totalReviewCount !== null) break;
+  }
   if (totalReviewCount === null) {
-    const labels = await page.locator("[aria-label]").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label") ?? ""));
-    for (const label of labels) {
+    const body = await page.locator("body").innerText().catch(() => "");
+    for (const label of body.split(/\r?\n/)) {
       totalReviewCount = parseReviewCount(label);
       if (totalReviewCount !== null) break;
     }
@@ -118,6 +128,15 @@ async function getPlaceDetails(page: Page): Promise<PlaceDetails> {
 }
 
 async function openReviews(page: Page): Promise<boolean> {
+  const reviewsTab = page.getByRole("tab", { name: /reviews.*place|opinie.*miejscu/i }).first();
+  if (await reviewsTab.isVisible().catch(() => false)) {
+    if (await reviewsTab.getAttribute("aria-selected").catch(() => null) !== "true") {
+      await reviewsTab.click({ timeout: 3_000 }).catch(() => undefined);
+      await page.waitForTimeout(1_000);
+    }
+    return true;
+  }
+  if (await page.locator(".jftiEf[data-review-id], .jftiEf[data-sort-id]").count().catch(() => 0)) return true;
   const candidates = page.locator('button[aria-label], [role="button"][aria-label]');
   const labels = await candidates.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label") ?? ""));
   for (const label of labels) {
@@ -142,28 +161,24 @@ async function openReviews(page: Page): Promise<boolean> {
 async function setNewestSort(page: Page): Promise<boolean> {
   const buttons = page.locator('button[aria-label], [role="button"][aria-label]');
   const labels = await buttons.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label") ?? ""));
-  const sort = labels.find((label) => /sort|sortuj|najnowsze|most relevant|most recent/i.test(label));
+  const sort = labels.find((label) => /sort by|sortuj według/i.test(label));
   if (sort) {
     await page.locator(`[aria-label=${JSON.stringify(sort)}]`).first().click({ timeout: 3_000 }).catch(() => undefined);
-    await page.waitForTimeout(200);
-    const options = page.locator('[role="menuitem"], [role="option"], [role="menu"] button');
-    const optionLabels = await options.evaluateAll((nodes) => nodes.map((node) => (node.textContent ?? "").trim()));
-    const newestIndex = optionLabels.findIndex((label) => /newest|most recent|najnowsze|najnowszych/i.test(label));
-    if (newestIndex >= 0) {
-      await options.nth(newestIndex).click().catch(() => undefined);
-      await page.waitForTimeout(700);
-      return true;
-    }
   }
-  // Current Maps review panes expose a sort control as a button named “Sort by”.
-  const sortButton = page.getByRole("button", { name: /sort by|sortuj według/i }).first();
+  const sortButton = page.getByRole("button", { name: /sort by|sortuj według|najtrafniejsze|most relevant/i }).first();
   if (await sortButton.isVisible().catch(() => false)) {
-    await sortButton.click().catch(() => undefined);
-    const newest = page.getByText(/newest|most recent|najnowsze/i).last();
+    if (!sort) await sortButton.click().catch(() => undefined);
+    const menu = page.getByRole("menu").last();
+    await menu.waitFor({ state: "visible", timeout: 2_000 }).catch(() => undefined);
+    const newest = menu.getByRole("menuitemradio", { name: /newest|most recent|najnowsze/i }).last();
     if (await newest.isVisible().catch(() => false)) {
-      await newest.click().catch(() => undefined);
-      await page.waitForTimeout(700);
-      return true;
+      await newest.click({ timeout: 3_000 }).catch(() => undefined);
+      const selected = page.locator('button[aria-label*="Newest"], button[aria-label*="Najnowsze"]').first();
+      await selected.waitFor({ state: "visible", timeout: 2_000 }).catch(() => undefined);
+      if (await selected.isVisible().catch(() => false)) {
+        await page.waitForTimeout(700);
+        return true;
+      }
     }
   }
   return false;
@@ -178,18 +193,16 @@ async function firstText(card: Locator, selectors: string[]): Promise<string | n
 }
 
 async function scrapeCard(card: Locator): Promise<Review | null> {
-  const cardId = await card.getAttribute("data-review-id").catch(() => null) ??
-    await card.getAttribute("data-sort-id").catch(() => null);
+  const cardId = await firstAttribute(card, "data-review-id") ?? await firstAttribute(card, "data-sort-id");
   const author = await firstText(card, [".d4r55", '[class*="author-name"]']);
-  const ratingLabel = await card.locator('[role="img"][aria-label], [aria-label*="star"], [aria-label*="gwiazdek"]').first().getAttribute("aria-label").catch(() => null);
-  const fallbackRating = await textContent(card.locator(".kvMYJc")) ?? await card.locator('[aria-label*="star"], [aria-label*="gwiazdk"]').first().getAttribute("aria-label").catch(() => null);
+  const ratingLabel = await firstAttribute(card.locator('[role="img"][aria-label], [aria-label*="star"], [aria-label*="gwiazdek"]'), "aria-label");
+  const fallbackRating = await textContent(card.locator(".kvMYJc")) ?? await firstAttribute(card.locator('[aria-label*="star"], [aria-label*="gwiazdk"]'), "aria-label");
   const rating = parseRating(ratingLabel) ?? parseRating(fallbackRating);
-  const reviewText = card.locator(".MyEned .wiI7pd, .wiI7pd").first();
-  let text = normalizedText(await textContent(reviewText)) ?? "";
-  if (!text) text = normalizedText(await firstText(card, [".MyEned", '[data-expandable-section]'])) ?? "";
+  const reviewText = card.locator(".MyEned .wiI7pd, .MyEned").first();
+  const text = normalizedText(await textContent(reviewText)) ?? "";
   const dateLabel = await firstText(card, [".rsqaWe", '[class*="date"]']);
-  const languageLabel = await card.locator('[lang]').first().getAttribute("lang").catch(() => null);
-  const sourceUrlRaw = await card.locator('a[href*="reviews"]').first().getAttribute("href").catch(() => null);
+  const languageLabel = await firstAttribute(card.locator('[lang]'), "lang");
+  const sourceUrlRaw = await firstAttribute(card.locator('a[href*="reviews"]'), "href");
   let sourceUrl: string | null = null;
   if (sourceUrlRaw) {
     try {
@@ -197,7 +210,7 @@ async function scrapeCard(card: Locator): Promise<Review | null> {
       if (isAllowedMapsUrl(candidate.toString())) sourceUrl = candidate.toString();
     } catch { /* Ignore non-Google review links. */ }
   }
-  const media: ReviewMedia[] = await card.locator('[class*="photo"] img, button[aria-label*="photo"] img, [class*="ReviewPhoto"] img, [style*="background-image"]').evaluateAll((images) => images.flatMap((image) => {
+  const media: ReviewMedia[] = await card.locator('button[data-review-id][data-photo-index], button[aria-label*="photo"] img').evaluateAll((images) => images.flatMap((image) => {
     const src = image.getAttribute("src") ?? image.getAttribute("data-src") ?? image.getAttribute("style")?.match(/url\(["']?(.*?)["']?\)/)?.[1];
     if (!src || !/googleusercontent\.com|gstatic\.com/i.test(src)) return [];
     const alt = image.getAttribute("alt")?.trim();
@@ -226,8 +239,8 @@ async function scrapeCard(card: Locator): Promise<Review | null> {
 async function expandVisibleReviews(cards: Locator, limit: number): Promise<void> {
   const count = Math.min(await cards.count().catch(() => 0), limit);
   for (let index = 0; index < count; index += 1) {
-    const expand = cards.nth(index).getByRole("button", { name: /more|read more|więcej|czytaj więcej/i }).first();
-    await expand.click({ timeout: 800 }).catch(() => undefined);
+    const expand = cards.nth(index).getByRole("button", { name: /more|read more|więcej|czytaj więcej/i });
+    if (await expand.count().catch(() => 0)) await expand.first().click({ timeout: 800 }).catch(() => undefined);
   }
 }
 
@@ -237,7 +250,7 @@ async function collectReviews(page: Page, limit: number, sortedNewest: boolean):
   let rounds = 0;
   let previousCount = -1;
   let quietRounds = 0;
-  while (Date.now() - started < REVIEW_WAIT_MS && rounds < MAX_SCROLL_ROUNDS) {
+  while (Date.now() - started < COLLECTION_TIMEOUT_MS && rounds < MAX_SCROLL_ROUNDS) {
     const count = await cards.count().catch(() => 0);
     if (count >= limit || (count > 0 && count === previousCount && quietRounds >= 2)) break;
     if (count === previousCount) quietRounds += 1; else quietRounds = 0;
@@ -261,8 +274,10 @@ async function collectReviews(page: Page, limit: number, sortedNewest: boolean):
   const stopReason = reviews.length === 0
     ? "Google Maps loaded the place but exposed no review cards (limited view, unavailable reviews, or blocked access)."
     : reviews.length >= limit
-      ? `Requested newest ${limit} reviews; stopped at the requested limit.`
-      : `Google Maps exposed ${reviews.length} review cards before loading stopped.`;
+      ? `Requested ${sortedNewest ? "newest " : "up to "}${limit} reviews; stopped at the requested limit.`
+      : Date.now() - started >= COLLECTION_TIMEOUT_MS || rounds >= MAX_SCROLL_ROUNDS
+        ? `Zakończono po osiągnięciu limitu czasu przewijania; pobrano ${reviews.length} opinii.`
+        : `Google Maps nie udostępniło kolejnych kart po pobraniu ${reviews.length} opinii.`;
   return { reviews, stopReason: sortedNewest ? stopReason : `${stopReason} Google’s newest sort control was unavailable; ordering is unverified.` };
 }
 
@@ -272,18 +287,11 @@ async function routeGuard(route: Route): Promise<void> {
     await route.continue();
     return;
   }
-  const frame = request.frame();
-  if (frame.parentFrame()) {
-    await route.continue();
-    return;
-  }
   if (!isAllowedNavigation(request.url())) await route.abort("blockedbyclient");
   else await route.continue();
 }
 
-export async function importGoogleMapsLocation(url: string, limit?: number): Promise<ImportSnapshot> {
-  if (!isAllowedMapsUrl(url)) throw new TypeError("Use an HTTPS Google Maps place link or maps.app.goo.gl shortlink.");
-  const requestedLimit = boundedLimit(limit);
+async function importGoogleMapsWithMode(url: string, requestedLimit: number, headless: boolean): Promise<ImportSnapshot> {
   let browser: Browser | null = null;
   let page: Page | null = null;
   let location: ImportSnapshot["location"] = {
@@ -293,8 +301,13 @@ export async function importGoogleMapsLocation(url: string, limit?: number): Pro
   let sort = "newest";
   let stopReason = "Google Maps did not expose review data.";
   try {
-    browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
-    const context = await browser.newContext({ locale: "en-US", serviceWorkers: "block" });
+    browser = await chromium.launch({ headless, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
+    const chromeMajor = browser.version().split(".")[0];
+    const context = await browser.newContext({
+      locale: "en-US",
+      userAgent: `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeMajor}.0.0.0 Safari/537.36`,
+      serviceWorkers: "block",
+    });
     await context.route("**/*", routeGuard);
     page = await context.newPage();
     page.setDefaultTimeout(5_000);
@@ -313,7 +326,7 @@ export async function importGoogleMapsLocation(url: string, limit?: number): Pro
       let placeId = new URL(resolvedUrl).pathname.match(/!1s([^!/?]+)/)?.[1] ?? new URL(resolvedUrl).pathname.match(/!16s([^!/?]+)/)?.[1] ?? null;
       placeId = placeId ? decodeURIComponent(placeId) : null;
       location = {
-        id: placeId || `google-${randomUUID()}`,
+        id: placeId || stableId(new URL(resolvedUrl).origin + new URL(resolvedUrl).pathname),
         name: details.name ?? "Google Maps location",
         address: details.address,
         sourceUrl: resolvedUrl,
@@ -322,6 +335,8 @@ export async function importGoogleMapsLocation(url: string, limit?: number): Pro
       const opened = await openReviews(page);
       if (opened) {
         await page.waitForSelector(".jftiEf, [data-review-id].jftiEf", { timeout: REVIEW_WAIT_MS }).catch(() => undefined);
+        const reviewDetails = await getPlaceDetails(page);
+        location.totalReviewCount = reviewDetails.totalReviewCount ?? location.totalReviewCount;
         const orderedNewest = await setNewestSort(page);
         sort = orderedNewest ? "newest" : "unknown (Google sort control unavailable)";
         const result = await collectReviews(page, requestedLimit, orderedNewest);
@@ -336,6 +351,9 @@ export async function importGoogleMapsLocation(url: string, limit?: number): Pro
   } finally {
     await browser?.close().catch(() => undefined);
   }
+  if (headless && (reviews.length === 0 || (reviews.length < requestedLimit && sort !== "newest"))) {
+    return importGoogleMapsWithMode(url, requestedLimit, false);
+  }
   if (reviews.length === 0) throw new Error(`${stopReason}${page ? ` Resolved page: ${page.url()}` : ""}`);
   return {
     id: randomUUID(),
@@ -347,8 +365,13 @@ export async function importGoogleMapsLocation(url: string, limit?: number): Pro
       importedCount: reviews.length,
       totalReviewCount: location.totalReviewCount,
       sort,
-      complete: reviews.length >= requestedLimit || (location.totalReviewCount !== null && reviews.length >= location.totalReviewCount),
+      complete: (sort === "newest" && reviews.length >= requestedLimit) || (location.totalReviewCount !== null && reviews.length >= location.totalReviewCount),
       stopReason,
     },
   };
+}
+
+export async function importGoogleMapsLocation(url: string, limit?: number): Promise<ImportSnapshot> {
+  if (!isAllowedMapsUrl(url)) throw new TypeError("Use an HTTPS Google Maps place link or maps.app.goo.gl shortlink.");
+  return importGoogleMapsWithMode(url, boundedLimit(limit), true);
 }

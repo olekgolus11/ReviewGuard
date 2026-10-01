@@ -82,7 +82,10 @@ export default function Workspace() {
   async function run(label: string, work: () => Promise<WorkspaceResponse>) {
     setBusy(label); setError(""); setNotice("");
     if (label === "assess" || label === "import") setBacktest(null);
-    try { applyResponse(await work()); }
+    try {
+      applyResponse(await work());
+      if (label === "import") setDraft({ reviewId: "", text: "", context: "", style: "warm" });
+    }
     catch (e) {
       setError(e instanceof Error ? e.message : "Wystąpił nieoczekiwany błąd.");
       try { applyResponse(await request<WorkspaceResponse>("/api/product/workspace")); } catch { /* Keep the original operation error visible. */ }
@@ -137,18 +140,19 @@ export default function Workspace() {
 
     <section className="intro">
       <div><p className="eyebrow">PRZEGLĄD LOKALIZACJI</p><h1>{snapshot?.location.name ?? "Twoja kolejka opinii"}</h1><p className="intro-sub">{snapshot ? snapshot.location.address ?? "Adres nie jest dostępny w źródle." : "Importuj publiczne opinie z Google Maps i zdecyduj, które wymagają działania."}</p></div>
-      {snapshot && <div className="snapshot-meta"><span>Import z {new Intl.DateTimeFormat("pl-PL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(snapshot.importedAt))}</span><span>{snapshot.coverage.complete ? "Próbka pobrana" : `Zatrzymano: ${snapshot.coverage.stopReason}`}</span></div>}
+      {snapshot && <div className="snapshot-meta"><span>Import z {new Intl.DateTimeFormat("pl-PL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(snapshot.importedAt))}</span><span>Kolejność: {snapshot.coverage.sort === "newest" ? "od najnowszych" : "niepotwierdzona"}</span><span>{snapshot.coverage.complete ? "Próbka pobrana" : `Zatrzymano: ${snapshot.coverage.stopReason}`}</span></div>}
     </section>
 
     {configuration && !configuration.aiConfigured && <aside className="setup-banner"><span className="setup-icon">i</span><div><strong>Analiza i propozycje są wyłączone</strong><p>Skonfiguruj dostęp do AI na serwerze, aby oceniać opinie i tworzyć szkice. Import, etykiety i eksport pozostają dostępne.</p></div><span className="setup-state">BRAK KONFIGURACJI</span></aside>}
     {error && <div className="message error" role="alert"><strong>Nie udało się wykonać tej czynności.</strong><span>{error}</span><button onClick={() => setError("")} aria-label="Zamknij komunikat">×</button></div>}
+    {busy === "import" && <p role="status" className="coverage-note">Pobieranie może potrwać kilka minut. Pomocnicze okno Google Maps zamknie się po zakończeniu.</p>}
     {notice && <div className="message success" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Zamknij komunikat">×</button></div>}
 
     {!snapshot ? <section className="import-card">
       <div className="import-illustration" aria-hidden="true"><div className="pin">⌖</div><div className="map-line one"/><div className="map-line two"/><div className="map-dot"/></div>
-      <div className="import-copy"><p className="eyebrow">ZACZNIJ OD LOKALIZACJI</p><h2>Opinie, które czekają na reakcję.</h2><p>Wklej link do profilu Google Maps. Pobierzemy najnowszą próbkę i pokażemy, jakich danych udało się uzyskać.</p>
+      <div className="import-copy"><p className="eyebrow">ZACZNIJ OD LOKALIZACJI</p><h2>Opinie, które czekają na reakcję.</h2><p>Wklej link do profilu Google Maps. Pobierzemy dostępną próbkę i pokażemy, jakich danych udało się uzyskać.</p>
         <form className="import-form" onSubmit={importReviews}><label htmlFor="place-url">Link do lokalizacji</label><div className="url-row"><input id="place-url" type="url" required value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://maps.app.goo.gl/…" /><button className="primary" disabled={!!busy}>{busy === "import" ? <><span className="spinner"/> Importuję…</> : <>Importuj opinie <span aria-hidden="true">→</span></>}</button></div>
-          <div className="import-options"><label htmlFor="review-limit">Liczba opinii</label><select id="review-limit" value={limit} onChange={(e) => setLimit(Number(e.target.value))}><option value={50}>50 — domyślnie</option><option value={100}>100</option><option value={200}>200 — maksymalnie</option></select><span>Import obejmuje najnowsze dostępne opinie.</span></div>
+          <div className="import-options"><label htmlFor="review-limit">Liczba opinii</label><select id="review-limit" value={limit} onChange={(e) => setLimit(Number(e.target.value))}><option value={50}>50 — domyślnie</option><option value={100}>100</option><option value={200}>200 — maksymalnie</option></select><span>Import preferuje najnowsze opinie; kolejność zapisujemy wraz z próbką.</span></div>
         </form><button type="button" className="text-button" onClick={fillExample}>Wstaw przykładowy link</button><p className="source-note">Import nie weryfikuje własności profilu ani nie publikuje odpowiedzi.</p>
       </div>
     </section> : <>

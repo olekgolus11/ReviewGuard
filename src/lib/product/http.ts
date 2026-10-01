@@ -17,7 +17,15 @@ export function workspaceResponse(workspace: ProductWorkspace) {
 }
 export function ensureSameOrigin(request: Request) {
   const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin) throw new ProductError("Żądanie musi pochodzić z tej aplikacji.", 403);
+  if (!origin) return;
+  // Next can normalize Request.url to localhost behind a proxy or in dev.
+  // The browser's Host header identifies the actual origin serving this UI.
+  const host = request.headers.get("host") ?? new URL(request.url).host;
+  let source: URL;
+  try { source = new URL(origin); } catch { throw new ProductError("Nieprawidłowe źródło żądania.", 403); }
+  if (!["http:", "https:"].includes(source.protocol) || source.host !== host || source.origin !== origin) {
+    throw new ProductError("Żądanie musi pochodzić z tej aplikacji.", 403);
+  }
 }
 export async function bodyObject(request: Request): Promise<Record<string, unknown>> {
   ensureSameOrigin(request);
@@ -40,7 +48,7 @@ export function findReview(workspace: ProductWorkspace, id: string) {
   return { review, location: workspace.snapshot.location };
 }
 export function errorResponse(error: unknown) {
-  const status = error instanceof ProductError ? error.status : 502;
+  const status = error instanceof ProductError ? error.status : error instanceof TypeError ? 400 : 502;
   const message = error instanceof Error ? error.message : "Operacja nie powiodła się. Spróbuj ponownie.";
   return Response.json({ error: message }, { status, headers: { "Cache-Control": "no-store" } });
 }

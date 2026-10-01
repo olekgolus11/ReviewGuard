@@ -14,7 +14,10 @@ export async function PATCH(request: Request) {
       findReview(workspace, reviewId);
       if (typeof body.replyText === "string") {
         if (!workspace.replies[reviewId]) throw new ProductError("Najpierw wygeneruj propozycję odpowiedzi.");
-        workspace.replies[reviewId].text = body.replyText.trim();
+        const reply = workspace.replies[reviewId];
+        reply.originalText ??= reply.text;
+        reply.text = body.replyText.trim();
+        reply.editedAt = new Date().toISOString();
       }
       if (body.label === null) delete workspace.labels[reviewId];
       else if (body.label !== undefined) workspace.labels[reviewId] = body.label as ReviewAction;

@@ -16,7 +16,7 @@ export type ReviewAssessment = {
   signals: { needsContext: boolean; potentialViolation: boolean; violationCategory: string | null; shouldReply: boolean };
   confidence: number | null; model: string; policyVersion: string; assessedAt: string;
 };
-export type ReplySuggestion = { reviewId: string; text: string; model: string; generatedAt: string; managerContext: string; style: ReplyStyle };
+export type ReplySuggestion = { reviewId: string; text: string; originalText?: string; editedAt?: string; model: string; generatedAt: string; managerContext: string; style: ReplyStyle };
 export type ReplyStyle = "warm" | "concise" | "professional";
 export type ReferenceLabel = { reviewId: string; action: ReviewAction };
 export type ProductWorkspace = {

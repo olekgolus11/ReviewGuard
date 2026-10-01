@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     return workspaceResponse(await updateWorkspace(id, latest => {
       const fresh = findReview(latest, reviewId);
       if (fresh.location.id !== location.id || reviewFingerprint(fresh.review) !== reviewFingerprint(review)) throw new ProductError("Opinia zmieniła się. Wygeneruj odpowiedź ponownie.", 409);
-      latest.replies[reviewId] = reply;
+      latest.replies[reviewId] = { ...reply, originalText: reply.text };
     }));
   } catch (error) { return errorResponse(error); }
 }

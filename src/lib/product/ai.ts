@@ -17,7 +17,9 @@ function requireGatewayKey(): void {
 }
 
 function requestError(operation: string, error: unknown): Error {
-  const detail = error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
+  const key = process.env.AI_GATEWAY_API_KEY?.trim();
+  const detail = (key ? message.replaceAll(key, "[ukryty klucz]") : message).slice(0, 500);
   const label = operation === "Review assessment" ? "Ocena opinii" : "Generowanie odpowiedzi";
   if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) return new Error(`${label} przekroczyła limit czasu (${REQUEST_TIMEOUT_MS / 1000} s). Spróbuj ponownie.`);
   return new Error(`${label} przez Vercel AI Gateway nie powiodła się (${detail}). Sprawdź klucz, dostęp do modelu i połączenie, a następnie spróbuj ponownie.`);
@@ -142,10 +144,10 @@ export async function generateReply(review: Review, location: Location, options:
   if (managerContext.length > MAX_MANAGER_CONTEXT_CHARS) throw new Error(`Notatka właściciela może mieć maksymalnie ${MAX_MANAGER_CONTEXT_CHARS} znaków. Skróć ją przed ponowną próbą.`);
   const locationFacts = { name: location.name.slice(0, MAX_LOCATION_FACT_CHARS), address: location.address?.slice(0, MAX_LOCATION_FACT_CHARS) ?? null };
   try {
-    const { text } = await generateText({
+    const { text, finishReason } = await generateText({
       model: REPLY_MODEL,
       abortSignal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      maxOutputTokens: 300,
+      maxOutputTokens: 1000,
       system: [
         "Write one editable public reply to a customer's review. Reply in the review's language when it can be identified; otherwise use the language of the review text.",
         "Use only facts explicitly present in the review, the supplied location facts, and the manager context. Never invent visit details, investigation findings, corrective action, contact attempts, compensation, refunds, or promises.",
@@ -156,6 +158,7 @@ export async function generateReply(review: Review, location: Location, options:
       ].join(" "),
       prompt: JSON.stringify({ location: locationFacts, review: { rating: review.rating, text: review.text.slice(0, 8_000), title: review.title?.slice(0, 500) ?? null, language: review.language }, managerContext }),
     });
+    if (finishReason === "length" || finishReason === "content-filter") throw new Error("Model nie zwrócił kompletnej odpowiedzi. Spróbuj ponownie.");
     const reply = text.trim().replace(/^['"“”]+|['"“”]+$/g, "");
     if (!reply || reply.length > 2_000) throw new Error("Model zwrócił pustą lub zbyt długą odpowiedź.");
     return { reviewId: review.id, text: reply, model: REPLY_MODEL, generatedAt: new Date().toISOString(), managerContext, style };
