@@ -364,9 +364,14 @@ async function importGoogleMapsWithMode(url: string, requestedLimit: number, hea
   if (headless && reviews.length < requestedLimit) {
     try {
       const visibleSnapshot = await importGoogleMapsWithMode(url, requestedLimit, false);
-      const keepsNewestOrder = sort !== "newest" || visibleSnapshot.coverage.sort === "newest";
-      if (visibleSnapshot.reviews.length > reviews.length && keepsNewestOrder) return visibleSnapshot;
-      fallbackNote = `Visible-browser retry returned ${visibleSnapshot.reviews.length}; retained ${reviews.length} headless reviews to preserve verified ordering or the larger sample.`;
+      const headlessHasNewestOrder = sort === "newest";
+      const visibleHasNewestOrder = visibleSnapshot.coverage.sort === "newest";
+      if (visibleHasNewestOrder !== headlessHasNewestOrder) {
+        if (visibleHasNewestOrder) return visibleSnapshot;
+      } else if (visibleSnapshot.reviews.length > reviews.length) {
+        return visibleSnapshot;
+      }
+      fallbackNote = `Visible-browser retry returned ${visibleSnapshot.reviews.length}; retained ${reviews.length} headless reviews because they had the preferred ordering or were at least as large.`;
     } catch (error) {
       fallbackNote = `Visible-browser retry failed: ${error instanceof Error ? error.message : "unknown error"}.`;
     }

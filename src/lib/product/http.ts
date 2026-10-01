@@ -30,8 +30,39 @@ export function ensureSameOrigin(request: Request) {
 export async function bodyObject(request: Request): Promise<Record<string, unknown>> {
   ensureSameOrigin(request);
   if (!request.headers.get("content-type")?.includes("application/json")) throw new ProductError("Wymagany format JSON.", 415);
-  const raw = await request.text();
-  if (raw.length > 32_000) throw new ProductError("Przesłano zbyt dużo danych.", 413);
+  const maxBodyBytes = 32_000;
+  const contentLength = request.headers.get("content-length");
+  if (contentLength && /^\d+$/.test(contentLength) && Number(contentLength) > maxBodyBytes) {
+    throw new ProductError("Przesłano zbyt dużo danych.", 413);
+  }
+  const reader = request.body?.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  if (reader) {
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalBytes += value.byteLength;
+        if (totalBytes > maxBodyBytes) {
+          await reader.cancel().catch(() => undefined);
+          throw new ProductError("Przesłano zbyt dużo danych.", 413);
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  let raw: string;
+  try { raw = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+  catch { throw new ProductError("Nieprawidłowy JSON."); }
   let value: unknown;
   try { value = JSON.parse(raw); } catch { throw new ProductError("Nieprawidłowy JSON."); }
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new ProductError("Wymagany obiekt JSON.");
