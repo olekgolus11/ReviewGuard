@@ -30,6 +30,8 @@ Edit generated replies, save them, and copy them for manual publication. The app
 
 ## Backtest
 
+For independent reference labels, first freeze a workspace JSON export and use the [local blind labeller](validation/blind-review-labeler.md). Run `node tools/blind-review-labeler/server.mjs` and open its localhost address. It hides model predictions and retains source-bound labels with an explicit development or held-out split. Compare its label export with the unchanged workspace export using the [offline evaluator](backtest-evaluation.md): `node tools/evaluate-backtest.mjs frozen-export.json reference-labels.json > evaluation-report.json`.
+
 Prefer two independent human labellers and reconcile disagreements before evaluation. Record the reference action separately from the model prediction. Use different reviews for prompt/rule tuning and final held-out evaluation. Test ordinary reviews and a deliberately described difficult-case sample: blank ratings, praise, complaints, mixed ratings/text, irony, serious incidents, policy concerns and already-answered reviews.
 
 The report uses only reviews with both a reference label and model assessment. Rows are reference actions; columns are model predictions. It shows sample size, missing assessments, accuracy and precision/recall per action; undefined metrics stay undefined, rather than being presented as perfect results. Reply quality requires separate human assessment of factual grounding, specificity, tone, privacy and unsupported promises.
