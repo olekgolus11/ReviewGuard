@@ -41,6 +41,13 @@ function persist() {
 
 function currentReview() { return dataset?.reviews[currentIndex]; }
 
+function availableReviews() {
+  const filter = elements.filter.value;
+  return dataset.reviews.map((review, index) => ({ review, index })).filter(({ review }) =>
+    filter === "all" || (filter === "unlabeled" ? !labels[review.id] : Boolean(labels[review.id]))
+  );
+}
+
 function renderCoverage() {
   const counts = { reply: 0, skip: 0, human_review: 0, report: 0, unlabeled: 0 };
   for (const review of dataset.reviews) {
@@ -55,10 +62,11 @@ function renderCoverage() {
 function render() {
   if (!dataset) return;
   const filter = elements.filter.value;
-  const available = dataset.reviews.map((review, index) => ({ review, index })).filter(({ review }) => filter === "all" || (filter === "unlabeled" ? !labels[review.id] : Boolean(labels[review.id])));
+  const available = availableReviews();
   const found = available.findIndex(item => item.index === currentIndex);
   if (found < 0 && available.length) currentIndex = available[0].index;
-  const review = available.find(item => item.index === currentIndex)?.review;
+  const position = available.findIndex(item => item.index === currentIndex);
+  const review = position >= 0 ? available[position].review : undefined;
   const completed = Object.keys(labels).filter(id => LABELS.has(labels[id]?.label)).length;
   elements.progressCount.textContent = String(completed);
   elements.progressTotal.textContent = `/ ${dataset.reviews.length}`;
@@ -66,6 +74,15 @@ function render() {
   elements.progressCaption.textContent = completed === dataset.reviews.length ? "Etykietowanie zakończone" : `${dataset.reviews.length - completed} opinii czeka na etykietę`;
   elements.exportLabels.disabled = completed === 0;
   renderCoverage();
+  elements.previous.disabled = !review || position === 0;
+  const hasNext = Boolean(review && position < available.length - 1);
+  const currentIsLabeled = Boolean(review && labels[review.id]);
+  elements.next.disabled = !hasNext || filter === "unlabeled" || !currentIsLabeled;
+  elements.next.textContent = filter === "unlabeled"
+    ? "Oznacz, aby przejść →"
+    : !hasNext
+      ? "Koniec listy"
+      : currentIsLabeled ? "Zapisz i dalej →" : "Wybierz etykietę →";
   elements.emptyState.classList.toggle("hidden", Boolean(review));
   elements.reviewCard.classList.toggle("hidden", !review);
   if (!review) return;
@@ -95,8 +112,6 @@ function render() {
   elements.reason.value = saved?.reason ?? "";
   elements.split.value = saved?.split ?? "";
   elements.savedMark.textContent = saved ? "ZAPISANO" : "";
-  elements.previous.disabled = currentIndex === 0;
-  elements.next.textContent = currentIndex >= dataset.reviews.length - 1 ? "Zapisz etykietę ✓" : "Zapisz i dalej →";
 }
 
 function saveCurrent(label) {
@@ -107,7 +122,13 @@ function saveCurrent(label) {
     elements.split.focus();
     return;
   }
+  const previousPosition = availableReviews().findIndex(item => item.index === currentIndex);
   labels[review.id] = { reviewId: review.id, sourceFingerprint: review.sourceFingerprint, label, reason: elements.reason.value.trim(), split: elements.split.value };
+  if (elements.filter.value === "unlabeled") {
+    const remaining = availableReviews();
+    const nextPosition = Math.min(Math.max(previousPosition, 0), remaining.length - 1);
+    if (remaining.length) currentIndex = remaining[nextPosition].index;
+  }
   persist();
   render();
 }
@@ -159,8 +180,20 @@ elements.changeSource.addEventListener("click", () => { elements.workspace.class
 document.querySelectorAll(".label-option").forEach(button => button.addEventListener("click", () => saveCurrent(button.dataset.label)));
 elements.reason.addEventListener("change", () => { const saved = labels[currentReview()?.id]; if (saved) saveCurrent(saved.label); });
 elements.split.addEventListener("change", () => { const saved = labels[currentReview()?.id]; if (saved && ["development", "held_out"].includes(elements.split.value)) saveCurrent(saved.label); });
-elements.next.addEventListener("click", () => { if (!labels[currentReview()?.id]) { showNotice("Wybierz etykietę przed przejściem dalej.", true); return; } if (currentIndex < dataset.reviews.length - 1) currentIndex += 1; render(); });
-elements.previous.addEventListener("click", () => { if (currentIndex > 0) currentIndex -= 1; render(); });
+elements.next.addEventListener("click", () => {
+  const available = availableReviews();
+  const position = available.findIndex(item => item.index === currentIndex);
+  if (position < 0 || !labels[currentReview()?.id]) return;
+  if (elements.filter.value === "unlabeled") return;
+  if (position < available.length - 1) currentIndex = available[position + 1].index;
+  render();
+});
+elements.previous.addEventListener("click", () => {
+  const available = availableReviews();
+  const position = available.findIndex(item => item.index === currentIndex);
+  if (position > 0) currentIndex = available[position - 1].index;
+  render();
+});
 elements.filter.addEventListener("change", () => { currentIndex = 0; render(); });
 elements.exportLabels.addEventListener("click", () => {
   const output = exportRecord();
