@@ -1,0 +1,24 @@
+{
+  "reviews": [
+    {
+      "id": "fixture-001",
+      "reviewerName": "Marta (fixture)",
+      "rating": 5,
+      "text": "Przykładowa opinia do sprawdzenia etykietowania. Dane są całkowicie fikcyjne.",
+      "ownerResponse": "Dziękujemy za przykładową opinię!",
+      "location": "Fikcyjna Lokalizacja — fixture",
+      "date": "2026-09-18",
+      "modelPrediction": "THIS MUST NEVER APPEAR",
+      "modelReason": "THIS MUST NEVER BE EXPORTED",
+      "draftReply": "THIS MUST NEVER APPEAR"
+    },
+    {
+      "id": "fixture-002",
+      "reviewerName": "Klient fixture",
+      "rating": 2,
+      "text": "Druga fikcyjna opinia, bez danych klientów.",
+      "location": "Fikcyjna Lokalizacja — fixture",
+      "modelPrediction": "report"
+    }
+  ]
+}

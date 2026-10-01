@@ -1,0 +1,11 @@
+# Blind classification backtest tools
+
+Continue the requested real-review classification backtest without depending on the live product implementation. These tools run locally and do not publish reviews, call AI, send review data to external services, or assign reference labels automatically.
+
+The labeller accepts a frozen JSON review dataset, including the live workspace export format. Display the original review, rating, source date, available owner response and location context. Hide model actions, probabilities, explanations and generated drafts throughout labelling. A human chooses reply, skip, human_review or report, optionally records a reason, and explicitly assigns the review to development or held_out. Do not invent an acceptance threshold or claim that a convenience sample is representative.
+
+Preserve progress across review navigation, support saving reference labels to JSON and resuming them against the same source data. Validate malformed datasets, duplicate identities, invalid actions/splits and stale labels before replacing current work. Fingerprints and a dataset hash bind labels to the normalized source content using a shared deterministic contract. Changes to predictions alone must not invalidate reference labels; changes to source review context must. Preserve source context as data rather than inserting untrusted HTML.
+
+An independent Node CLI consumes the frozen workspace export and reference label file. Validate their identity/content match, then report a confusion matrix (reference rows, prediction columns), labelled/evaluated counts, missing assessments, accuracy and per-action precision/recall/support separately for development and held_out. Undefined metrics are null. Include model/policy metadata when available and disclose mixed versions. Never compare labels to fabricated predictions or substitute an action for a missing assessment.
+
+Use no new runtime dependencies or imports from live product modules. Document local startup, input/output contracts, privacy behavior, how to freeze a dataset, and how to reconcile independent human labels before a final held-out evaluation. Keep production deployment and online account onboarding outside this work.

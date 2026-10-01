@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Ślepe etykietowanie opinii</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="ReviewGuard — etykietowanie"><span class="brand-mark">R</span><span>ReviewGuard <small>LAB</small></span></a>
+        <div class="privacy"><span class="privacy-dot"></span> Dane zostają w tej przeglądarce</div>
+      </header>
+
+      <main>
+        <section class="intro">
+          <div class="eyebrow">PRZEGLĄD REFERENCYJNY <span>•</span> TRYB ŚLEPY</div>
+          <h1>Najpierw opinia.<br /><em>Potem etykieta.</em></h1>
+          <p>Oceń, jaka reakcja człowieka byłaby właściwa. Nie zobaczysz podpowiedzi ani ocen modelu.</p>
+        </section>
+
+        <section class="load-panel" id="loadPanel" aria-label="Wczytaj dane">
+          <div class="load-icon" aria-hidden="true">↥</div>
+          <div class="load-copy"><strong>Wczytaj eksport opinii</strong><span>Plik JSON • dane są przetwarzane wyłącznie lokalnie</span></div>
+          <label class="button button-dark" for="sourceFile">Wybierz plik</label>
+          <input id="sourceFile" type="file" accept="application/json,.json" />
+        </section>
+        <p id="loadHint" class="load-hint">Obsługiwane formaty: <code>{ "reviews": [...] }</code> oraz eksport ReviewGuard z <code>workspace.snapshot.reviews</code>.</p>
+
+        <section id="workspace" class="workspace hidden" aria-live="polite">
+          <aside class="rail">
+            <div class="rail-heading"><span>POSTĘP</span><button id="changeSource" class="text-button" type="button">Zmień plik</button></div>
+            <div class="progress-number"><strong id="progressCount">0</strong><span id="progressTotal">/ 0</span></div>
+            <div class="progress-track"><span id="progressBar"></span></div>
+            <p id="progressCaption" class="muted">Etykietowanie nie rozpoczęte</p>
+            <div class="rail-rule"></div>
+            <div class="coverage-title">POKRYCIE PRÓBKI</div>
+            <p class="coverage-note">Opis liczebności, nie miara reprezentatywności.</p>
+            <div id="coverage" class="coverage"></div>
+            <div class="rail-rule"></div>
+            <label class="field-label" for="filter">Pokaż</label>
+            <select id="filter" class="select"><option value="all">Wszystkie opinie</option><option value="unlabeled">Bez etykiety</option><option value="labeled">Oznaczone</option></select>
+            <div class="rail-bottom"><button id="exportLabels" class="button button-accent" type="button" disabled>Eksportuj etykiety</button><button id="importLabels" class="text-button import-button" type="button">Wznów z pliku etykiet</button><input id="labelsFile" type="file" accept="application/json,.json" /></div>
+          </aside>
+
+          <section class="review-area">
+            <div id="emptyState" class="empty-state hidden"><span class="empty-mark">✓</span><h2>To wszystkie opinie w tym widoku.</h2><p>Możesz zmienić filtr albo wyeksportować zapisane etykiety.</p></div>
+            <article id="reviewCard" class="review-card hidden">
+              <div class="card-top"><div><span id="reviewIndex" class="review-index"></span><span id="reviewLocation" class="location"></span></div><div id="reviewDate" class="review-date"></div></div>
+              <div class="review-heading"><div><div id="reviewRating" class="rating"></div><h2 id="reviewer"></h2></div><div id="reviewId" class="review-id"></div></div>
+              <h3 id="reviewTitle" class="review-title hidden"></h3>
+              <blockquote id="reviewText" class="review-text"></blockquote>
+              <div id="reviewLocationAddress" class="location-address hidden"></div>
+              <section id="reviewMediaBlock" class="review-media hidden"><span>MEDIA ZAŁĄCZONE DO OPINII</span><div id="reviewMedia"></div></section>
+              <section id="ownerResponseBlock" class="owner-response hidden"><span>ODPOWIEDŹ WŁAŚCICIELA</span><p id="ownerResponse"></p></section>
+
+              <div class="label-heading"><div><span class="section-kicker">TWOJA OCENA</span><h3>Co powinien zrobić zespół?</h3></div><span id="savedMark" class="saved-mark"></span></div>
+              <div class="labels" role="group" aria-label="Wybierz etykietę">
+                <button class="label-option" data-label="reply" type="button"><span class="label-symbol">↗</span><span><strong>Odpowiedzieć</strong><small>Warto przygotować odpowiedź</small></span></button>
+                <button class="label-option" data-label="skip" type="button"><span class="label-symbol">—</span><span><strong>Pominąć</strong><small>Nie wymaga działania</small></span></button>
+                <button class="label-option" data-label="human_review" type="button"><span class="label-symbol">◎</span><span><strong>Sprawdzić ręcznie</strong><small>Potrzebna ocena człowieka</small></span></button>
+                <button class="label-option" data-label="report" type="button"><span class="label-symbol">⚑</span><span><strong>Zgłosić</strong><small>Rozważyć zgłoszenie opinii</small></span></button>
+              </div>
+              <div class="form-row"><label class="reason-field"><span>Uzasadnienie <small>opcjonalnie</small></span><textarea id="reason" rows="2" placeholder="Co wpłynęło na tę ocenę?"></textarea></label><label class="split-field"><span>Podział <b>— wymagany</b></span><select id="split" class="select"><option value="">Wybierz podział…</option><option value="development">Roboczy — do strojenia</option><option value="held_out">Kontrolny — bez strojenia</option></select></label></div>
+              <div class="card-footer"><button id="previous" class="button button-light" type="button">← Poprzednia</button><span id="saveStatus" class="save-status">Zapis lokalny włączony</span><button id="next" class="button button-dark" type="button">Zapisz i dalej →</button></div>
+            </article>
+          </section>
+        </section>
+        <div id="notice" class="notice hidden" role="status"></div>
+      </main>
+      <footer><span>ReviewGuard · narzędzie lokalne do etykietowania</span><span>Bez wysyłania danych · bez podglądu predykcji</span></footer>
+    </div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
