@@ -32,6 +32,14 @@ _Avoid_: Internal investigation, assumed explanation
 A customer's rating, optionally accompanied by text, published against a location.
 _Avoid_: Post, comment
 
+**Review action recommendation**:
+An assessment of the next action for a review: prepare a reply, skip, request human review, or consider reporting a potential policy violation. It includes reasons and does not mean that the action has been completed.
+_Avoid_: Review status, sentiment, automatic report
+
+**Live review prototype**:
+A workflow that imports a Google Maps location's real reviews, assesses the next action, and prepares editable reply suggestions for copying. It does not verify location ownership or publish replies to Google.
+_Avoid_: Curated demo, production dashboard
+
 **Reply suggestion**:
 A proposed response to a review that requires human approval before publication.
 _Avoid_: Automatic reply, generated description

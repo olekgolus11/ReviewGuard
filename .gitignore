@@ -42,3 +42,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local live-product data (public reviews, edits and backtest labels)
+/.reviewguard-data/

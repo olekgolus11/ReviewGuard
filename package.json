@@ -12,7 +12,9 @@
     "test:ui": "vitest run"
   },
   "dependencies": {
+    "ai": "^7.0.126",
     "next": "16.2.9",
+    "playwright": "^1.63.0",
     "posthog-js": "^1.433.9",
     "react": "19.2.4",
     "react-dom": "19.2.4",
