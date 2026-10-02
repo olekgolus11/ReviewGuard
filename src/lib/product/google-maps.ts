@@ -202,14 +202,9 @@ async function scrapeCard(card: Locator): Promise<Review | null> {
   const text = normalizedText(await textContent(reviewText)) ?? "";
   const dateLabel = await firstText(card, [".rsqaWe", '[class*="date"]']);
   const languageLabel = await firstAttribute(card.locator('[lang]'), "lang");
-  const sourceUrlRaw = await firstAttribute(card.locator('a[href*="reviews"]'), "href");
-  let sourceUrl: string | null = null;
-  if (sourceUrlRaw) {
-    try {
-      const candidate = new URL(sourceUrlRaw, "https://www.google.com");
-      if (isAllowedMapsUrl(candidate.toString())) sourceUrl = candidate.toString();
-    } catch { /* Ignore non-Google review links. */ }
-  }
+  // A reviewer's profile link can contain `/reviews` without pointing to this review.
+  // Keep the review link empty until Google exposes a review-specific permalink.
+  const sourceUrl: string | null = null;
   const media: ReviewMedia[] = await card.locator('button[data-review-id][data-photo-index], button[aria-label*="photo"] img').evaluateAll((images) => images.flatMap((image) => {
     const src = image.getAttribute("src") ?? image.getAttribute("data-src") ?? image.getAttribute("style")?.match(/url\(["']?(.*?)["']?\)/)?.[1];
     if (!src || !/googleusercontent\.com|gstatic\.com/i.test(src)) return [];

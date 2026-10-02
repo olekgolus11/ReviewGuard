@@ -21,3 +21,7 @@ Classify all imported reviews automatically before presenting the completed impo
 Add author-requested Promptfoo development regressions against the production classifier, including the quoted ordinary positive review at four and five stars, all four actions, independent policy/context signals and the captured contradictory routing result. These checks do not replace independent held-out human evaluation. Open review photos in an accessible in-app preview with close, keyboard navigation and restored focus, instead of a new tab.
 
 Verify this correction against starting commit 32c38e3. Merge the reviewed changes locally into main; do not merge on GitHub.
+
+## Queue and source-link refinements
+
+The default queue combines reply, human review and report actions at once. Replace exclusive per-action filters with one optional "Uwzględnij pominięte" checkbox; retain rating filtering, consistent selected-review navigation and honest empty states. Review body typography should be ordinary readable body text (16px, normal weight), not a large bold quote. Open source should point to the exact Google review when a verified review-specific link or identifier supports it; fall back honestly to the place when unavailable. Apply verified identifier-based links to previously stored imports where possible. Verify against starting commit 3ef6f17 and merge locally.

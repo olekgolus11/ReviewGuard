@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProductConfiguration, ProductWorkspace, Review, ReviewAction, ReplyStyle, WorkspaceResponse } from "../../../lib/product/types";
 import prototypeStyles from "../../_demo-prototype/prototype.module.css";
+import { getReviewSourceUrl } from "../../../lib/product/google-review-source";
 
 const actionLabels: Record<ReviewAction, string> = {
   reply: "Przygotuj odpowiedź",
@@ -10,7 +11,7 @@ const actionLabels: Record<ReviewAction, string> = {
   human_review: "Wymaga uwagi",
   report: "Rozważ zgłoszenie",
 };
-const actionShort: Record<ReviewAction, string> = { reply: "Odpowiedź", skip: "Pomiń", human_review: "Uwaga", report: "Zgłoszenie" };
+const actionShort: Record<ReviewAction, string> = { reply: "Odpowiedz", skip: "Pomiń", human_review: "Uwaga", report: "Zgłoszenie" };
 const actions: ReviewAction[] = ["reply", "skip", "human_review", "report"];
 const styles: { value: ReplyStyle; label: string }[] = [
   { value: "warm", label: "Życzliwy" },
@@ -46,7 +47,7 @@ export default function Workspace() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [filterAction, setFilterAction] = useState("all");
+  const [includeSkipped, setIncludeSkipped] = useState(false);
   const [filterRating, setFilterRating] = useState("all");
   const [selectedId, setSelectedId] = useState("");
   const [photoIndex, setPhotoIndex] = useState<number | null>(null);
@@ -83,28 +84,24 @@ export default function Workspace() {
 
   const snapshot = workspace?.snapshot ?? null;
   const reviews = useMemo(() => snapshot?.reviews ?? [], [snapshot?.reviews]);
-  const selected = reviews.find((review) => review.id === selectedId) ?? null;
+  const filtered = useMemo(() => reviews.filter((review) => {
+    const action = workspace?.assessments[review.id]?.action;
+    return (includeSkipped || action === "reply" || action === "human_review" || action === "report") && (filterRating === "all" || review.rating === Number(filterRating));
+  }), [reviews, workspace, includeSkipped, filterRating]);
+  const selected = filtered.find((review) => review.id === selectedId) ?? filtered[0] ?? null;
+  const activeReviewId = selected?.id ?? "";
+  const sourceUrl = selected && snapshot ? getReviewSourceUrl(selected, snapshot.location) : null;
   const photos = selected?.media.filter((media) => media.type !== "video") ?? [];
   const assessment = selected ? workspace?.assessments[selected.id] : undefined;
   const suggestion = selected ? workspace?.replies[selected.id] : undefined;
-  const replyDraft = draft.reviewId === selectedId ? draft : { reviewId: selectedId, text: suggestion?.text ?? "", context: suggestion?.managerContext ?? "", style: suggestion?.style ?? "warm" as ReplyStyle };
+  const replyDraft = draft.reviewId === activeReviewId ? draft : { reviewId: activeReviewId, text: suggestion?.text ?? "", context: suggestion?.managerContext ?? "", style: suggestion?.style ?? "warm" as ReplyStyle };
   const labelledCount = Object.keys(workspace?.labels ?? {}).length;
   const assessedCount = Object.keys(workspace?.assessments ?? {}).length;
-  const filtered = useMemo(() => reviews.filter((review) => {
-    const action = workspace?.assessments[review.id]?.action;
-    return (filterAction === "all" || action === filterAction) && (filterRating === "all" || review.rating === Number(filterRating));
-  }), [reviews, workspace, filterAction, filterRating]);
   const counts = useMemo(() => actions.reduce((acc, action) => {
     acc[action] = reviews.filter((review) => workspace?.assessments[review.id]?.action === action).length;
     return acc;
   }, {} as Record<ReviewAction, number>), [reviews, workspace]);
-  const selectedIndex = filtered.findIndex((review) => review.id === selectedId);
-  function changeFilter(action: string, rating: string) {
-    setFilterAction(action);
-    setFilterRating(rating);
-    const matches = reviews.filter((review) => (action === "all" || workspace?.assessments[review.id]?.action === action) && (rating === "all" || review.rating === Number(rating)));
-    if (!matches.some((review) => review.id === selectedId)) setSelectedId(matches[0]?.id ?? "");
-  }
+  const selectedIndex = filtered.findIndex((review) => review.id === activeReviewId);
 
   useEffect(() => {
     if (photoIndex === null) return;
@@ -214,19 +211,19 @@ export default function Workspace() {
 
       <section className="queue-section">
         {assessmentSummary?.status === "partial" && <div className="retry-row"><span className="eyebrow">NIEPEŁNA OCENA · {assessedCount}/{reviews.length}</span><button className="text-button assess-all" disabled={!configuration?.aiConfigured || !!busy || assessedCount === reviews.length} onClick={() => assess()}>{busy === "assess" ? "Analizuję…" : "Ponów ocenę pozostałych"}</button></div>}
-        <div className="action-summary"><button className={`action-count ${filterAction === "all" ? "active" : ""}`} onClick={() => changeFilter("all", filterRating)}>Wszystkie</button>{actions.map((action) => <button key={action} className={`action-count ${filterAction === action ? "active" : ""} action-${action}`} onClick={() => changeFilter(action, filterRating)}><span>{counts[action]}</span>{actionShort[action]}</button>)}</div>
+        <div className="action-summary"><div className="queue-actions" aria-label="Czynności w kolejce">{actions.filter((action) => action !== "skip").map((action) => <span key={action} className={`action-count action-${action}`}><span>{counts[action]}</span>{actionShort[action]}</span>)}</div><label className="include-skipped"><input type="checkbox" checked={includeSkipped} onChange={(event) => setIncludeSkipped(event.target.checked)} /> Uwzględnij pominięte <span>({counts.skip})</span></label></div>
         <div className="workspace-grid">
           <aside className="review-list" aria-label="Lista opinii">
-            <div className="list-toolbar"><span>{filtered.length} OPINII</span><label htmlFor="rating-filter" className="sr-only">Filtruj według oceny</label><select id="rating-filter" value={filterRating} onChange={(e) => changeFilter(filterAction, e.target.value)}><option value="all">Każda ocena</option>{[5,4,3,2,1].map((n) => <option key={n} value={n}>{n} {n === 1 ? "gwiazdka" : "gwiazdki"}</option>)}</select></div>
+            <div className="list-toolbar"><span>{filtered.length} OPINII</span><label htmlFor="rating-filter" className="sr-only">Filtruj według oceny</label><select id="rating-filter" value={filterRating} onChange={(e) => setFilterRating(e.target.value)}><option value="all">Każda ocena</option>{[5,4,3,2,1].map((n) => <option key={n} value={n}>{n} {n === 1 ? "gwiazdka" : "gwiazdki"}</option>)}</select></div>
             {filtered.length ? <ul>{filtered.map((review) => {
               const item = workspace?.assessments[review.id];
-              return <li key={review.id}><button className={`review-row ${selectedId === review.id ? "selected" : ""}`} onClick={() => setSelectedId(review.id)} aria-current={selectedId === review.id ? "true" : undefined}><div className="review-row-top"><span className="rating">{stars(review.rating)}</span><time>{dateLabel(review)}</time></div><strong>{review.author ?? "Autor nieznany"}</strong><span className="review-excerpt">{review.text || review.title || "Opinia bez treści"}</span><span className={`action-pill ${item ? `pill-${item.action}` : "pill-new"}`}>{item ? actionShort[item.action] : "Nieoceniona"}{item?.signals.needsContext && <span title="Wymaga kontekstu"> · kontekst</span>}</span></button></li>;
-            })}</ul> : <div className="list-empty">Brak opinii spełniających wybrane filtry.</div>}
+              return <li key={review.id}><button className={`review-row ${activeReviewId === review.id ? "selected" : ""}`} onClick={() => setSelectedId(review.id)} aria-current={activeReviewId === review.id ? "true" : undefined}><div className="review-row-top"><span className="rating">{stars(review.rating)}</span><time>{dateLabel(review)}</time></div><strong>{review.author ?? "Autor nieznany"}</strong><span className="review-excerpt">{review.text || review.title || "Opinia bez treści"}</span><span className={`action-pill ${item ? `pill-${item.action}` : "pill-new"}`}>{item ? actionShort[item.action] : "Nieoceniona"}{item?.signals.needsContext && <span title="Wymaga kontekstu"> · kontekst</span>}</span></button></li>;
+            })}</ul> : <div className="list-empty">Brak opinii wymagających reakcji przy wybranej ocenie. Możesz uwzględnić pominięte opinie.</div>}
           </aside>
           <article className="review-detail" aria-label="Szczegóły wybranej opinii">
             {selected ? <>
               <div className="detail-navigation"><button className="outline-button small" disabled={selectedIndex <= 0} onClick={() => setSelectedId(filtered[selectedIndex - 1].id)}>← Poprzednia opinia</button><span>{selectedIndex + 1} / {filtered.length}</span><button className="outline-button small" disabled={selectedIndex < 0 || selectedIndex >= filtered.length - 1} onClick={() => setSelectedId(filtered[selectedIndex + 1].id)}>Następna opinia →</button></div>
-              <div className="detail-top"><div><span className="rating detail-stars">{stars(selected.rating)}</span><span className="detail-date">{dateLabel(selected)}</span></div><a href={selected.sourceUrl ?? snapshot.location.sourceUrl} target="_blank" rel="noreferrer">Otwórz źródło ↗</a></div>
+              <div className="detail-top"><div><span className="rating detail-stars">{stars(selected.rating)}</span><span className="detail-date">{dateLabel(selected)}</span></div><a href={sourceUrl ?? snapshot.location.sourceUrl} target="_blank" rel="noreferrer">{sourceUrl === snapshot.location.sourceUrl ? "Otwórz lokal w Google ↗" : "Otwórz opinię w Google ↗"}</a></div>
               <div className="reviewer"><div className="avatar" aria-hidden="true">{(selected.author ?? "?").slice(0,1).toLocaleUpperCase()}</div><div><strong>{selected.author ?? "Autor nieznany"}</strong><span>{selected.language ? `Język: ${selected.language}` : "Język nieokreślony"}</span></div><button className="single-assess" disabled={!configuration?.aiConfigured || !!busy} onClick={() => assess(selected.id)}>{busy === "assess" ? "Analiza…" : "Oceń ponownie"}</button></div>
               {selected.title && <h3 className="review-title">{selected.title}</h3>}
               <p className="review-fulltext">{selected.text || "Autor nie dodał treści do tej opinii."}</p>
