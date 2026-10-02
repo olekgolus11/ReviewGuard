@@ -1,6 +1,6 @@
 import { experimental_evaluate as evaluate, generateText } from "ai";
 import type { Review, Location, ReviewAction, ReviewAssessment, ReplySuggestion, ReplyStyle } from "./types";
-import { ACTIONS, CLASSIFIER_MODEL, DECISION_THRESHOLDS, REPLY_MODEL, createAssessment, validateReviewInput } from "./policy";
+import { ACTIONS, CLASSIFIER_MODEL, DECISION_THRESHOLDS, REPLY_MODEL, applyReplyUsefulnessGate, createAssessment, validateReviewInput } from "./policy";
 
 const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_MANAGER_CONTEXT_CHARS = 8_000;
@@ -74,17 +74,17 @@ export async function assessReview(review: Review, location: Location): Promise<
       questions: {
         action: {
           type: "choice",
-          instructions: "Choose the single best next action for this review. Consider the review's written content and existing owner reply. Rating alone is never evidence of a policy violation. Normal criticism stays eligible for a reply. Use human_review when facts are missing, claims are serious, language is unclear, or an assessment needs owner judgment.",
+          instructions: "Choose the single best next action for this review. Consider the review's written content and existing owner reply. Rating alone is never evidence of a policy violation. Normal criticism stays eligible for a reply. Routine positive descriptions of food, speed, polite service, or atmosphere do not by themselves merit a reply, even when several details are mentioned. Use human_review when facts are missing, claims are serious, language is unclear, or an assessment needs owner judgment.",
           criteria: {
-            reply: "Written content includes a question, specific experience, actionable feedback, or detailed praise that merits a relevant public response; no missing facts prevent a neutral reply.",
-            skip: "No written content or only generic content where a reply would add no useful information, or an owner reply already exists.",
+            reply: "Written content includes a question, a concern or actionable feedback, or unusually specific praise that merits a relevant public response; no missing facts prevent a neutral reply. Ordinary positive comments about food, wait time, service, or atmosphere alone are not enough.",
+            skip: "No written content, an owner reply already exists, or the review is a routine positive account without a question or actionable issue and a public reply would add no useful information. Mentioning several ordinary details does not make routine praise reply-worthy.",
             human_review: "Serious incident, medical/safety allegation, legal threat, unclear sarcasm/meaning, disputed facts, or context is needed before a responsible response.",
             report: "The text itself contains concrete, observable evidence of a possible platform content-policy violation (such as threats, targeted harassment, hate, private data, advertising, unrelated content, or obvious duplication). Mere negativity, low stars, or an unverified claim is not sufficient.",
           },
         },
         needsContext: { type: "boolean", instructions: "Does this review require a factual answer, incident investigation, or owner-provided context that is not present in the review or location data? Do not treat ordinary criticism as needing context." },
         potentialViolation: { type: "boolean", instructions: "Is there visible textual evidence of a possible Google Maps content-policy violation? Criticism, low ratings, disagreement, or unverified claims alone do not qualify." },
-        shouldReply: { type: "boolean", instructions: "Would a thoughtful, relevant public response be useful based on the review text? A negative rating alone is not enough; blank stars and generic non-actionable praise usually do not need a reply." },
+        shouldReply: { type: "boolean", instructions: "Would a thoughtful, relevant public response be useful based on the review text? A negative rating alone is not enough. Routine positive comments about food, speed, polite service, or atmosphere usually do not need a reply, even when they name several such details. A question, actionable issue, or unusually specific praise may warrant one." },
         seriousIncident: { type: "boolean", instructions: "Does the review describe a potentially serious safety, health, discrimination, legal, or similarly consequential incident that warrants human review? Do not decide whether the claim is true." },
         violationCategory: {
           type: "choice",
@@ -117,7 +117,8 @@ export async function assessReview(review: Review, location: Location): Promise<
     if (!review.text.trim()) {
       return createAssessment({ review, action: "skip", confidence: null, needsContext: false, potentialViolation: false, violationCategory: null, shouldReply: false, seriousIncident: false });
     }
-    const decision = decideAction(choice.choice, actionProbabilities, seriousIncident, needsContext);
+    const classified = decideAction(choice.choice, actionProbabilities, seriousIncident, needsContext);
+    const decision = applyReplyUsefulnessGate(classified.action, classified.confidence, shouldReply >= DECISION_THRESHOLDS.signal);
     // Reporting and response signals stay independent, but a specific, likely violation is surfaced first.
     const action = probableViolation && decision.action !== "human_review" ? "report" : decision.action;
     const confidence = action === decision.action ? decision.confidence : actionProbabilities.report;

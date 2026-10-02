@@ -11,3 +11,13 @@ Persist per-browser workspaces on the server, with an HttpOnly cookie and explic
 Allow exporting snapshot/evaluation data and backtesting model actions against manually entered reference actions. Show labelled/evaluated sample size, confusion matrix and per-action precision/recall; exclude unlabelled reviews and warn that the same labelled data should not be used for prompt tuning and final acceptance. Do not invent acceptance thresholds or claim classification quality before real labelled results.
 
 Meaningful verification at public behavior boundaries requires author-approved TDD seams. Otherwise implementation and typecheck proceed without writing tests until agreement. Full suite, typecheck, lint and production build run before PR. Review against the starting main commit ec143fe69c47dde18af7dbe79b527b57d4c68fc1 and this spec. Commit messages, branches and PR text are English.
+
+## October 2 workflow corrections
+
+Preserve the curated demo visual design and review desk interaction structure in the live workspace: scrolling review queue, selected review/assessment and reply editor alongside each other on desktop, responsive mobile layout. No unsolicited redesign. Import status must not promise a visible Google Maps window: that window is conditional fallback only.
+
+Classify all imported reviews automatically before presenting the completed import. Save source data and successful assessments even when some provider calls fail, clearly show incomplete classification and allow retry. Refresh stale policy assessments on opening existing workspaces. Ordinary positive descriptions of food, waiting time, service and quiet seating do not by themselves warrant a reply. A reply action contradicted by a false reply-usefulness signal must become skip, without retaining the reply confidence as skip confidence. Preserve independent violation/context escalation.
+
+Add author-requested Promptfoo development regressions against the production classifier, including the quoted ordinary positive review at four and five stars, all four actions, independent policy/context signals and the captured contradictory routing result. These checks do not replace independent held-out human evaluation. Open review photos in an accessible in-app preview with close, keyboard navigation and restored focus, instead of a new tab.
+
+Verify this correction against starting commit 32c38e3. Merge the reviewed changes locally into main; do not merge on GitHub.

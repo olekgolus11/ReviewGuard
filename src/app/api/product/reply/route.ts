@@ -1,3 +1,4 @@
+import { POLICY_VERSION } from "@/lib/product/policy";
 import { generateReply } from "@/lib/product/ai";
 import { readWorkspace, reviewFingerprint, updateWorkspace } from "@/lib/product/store";
 import { bodyObject, errorResponse, findReview, ProductError, requiredString, workspaceId, workspaceResponse } from "@/lib/product/http";
@@ -16,13 +17,15 @@ export async function POST(request: Request) {
     const current = await readWorkspace(id);
     const { review, location } = findReview(current, reviewId);
     const assessment = current.assessments[reviewId];
-    if (!assessment) throw new ProductError("Najpierw oceń opinię.");
+    if (!assessment || assessment.policyVersion !== POLICY_VERSION) throw new ProductError("Najpierw oceń opinię.");
     if (assessment.action === "report" || assessment.action === "skip") throw new ProductError("Ta opinia nie jest przeznaczona do przygotowania odpowiedzi.");
     if (assessment.signals.needsContext && !managerContext.trim()) throw new ProductError("Dodaj fakty od osoby odpowiedzialnej za miejsce przed wygenerowaniem odpowiedzi.");
     const reply = await generateReply(review, location, { managerContext: managerContext.trim(), style: style as ReplyStyle });
     return workspaceResponse(await updateWorkspace(id, latest => {
       const fresh = findReview(latest, reviewId);
       if (fresh.location.id !== location.id || reviewFingerprint(fresh.review) !== reviewFingerprint(review)) throw new ProductError("Opinia zmieniła się. Wygeneruj odpowiedź ponownie.", 409);
+      const latestAssessment = latest.assessments[reviewId];
+      if (!latestAssessment || latestAssessment.policyVersion !== POLICY_VERSION || latestAssessment.assessedAt !== assessment.assessedAt) throw new ProductError("Ocena opinii zmieniła się podczas generowania. Sprawdź nową rekomendację.", 409);
       latest.replies[reviewId] = { ...reply, originalText: reply.text };
     }));
   } catch (error) { return errorResponse(error); }

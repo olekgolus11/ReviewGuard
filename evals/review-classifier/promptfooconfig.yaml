@@ -1,0 +1,101 @@
+description: "Synthetic development regressions for ReviewGuard's production review classifier"
+prompts:
+  - "Assess the supplied review."
+providers:
+  - file://./provider.ts
+defaultTest:
+  options:
+    transform: "JSON.parse(output)"
+tests:
+  - description: "The reported review stays skipped when replayed as a five-star regression"
+    vars:
+      rating: 5
+      text: "Jedzenie w miarę smaczne i nie trzeba na nie długo czekać. Obsługa bardzo miła. Są stoliki na uboczu, gdzie można spokojnie pogadać bez hałasu."
+    assert:
+      - type: javascript
+        value: "output.action === 'skip' && output.signals.shouldReply === false"
+  - description: "Reported four-star praise is skipped despite an earlier reply classification"
+    vars:
+      rating: 4
+      text: "Jedzenie w miarę smaczne i nie trzeba na nie długo czekać. Obsługa bardzo miła. Są stoliki na uboczu, gdzie można spokojnie pogadać bez hałasu."
+    assert:
+      - type: javascript
+        value: "output.action === 'skip' && output.signals.shouldReply === false"
+  - description: "Brief generic praise does not need a reply"
+    vars:
+      rating: 5
+      text: "Great place!"
+    assert:
+      - type: javascript
+        value: "output.action === 'skip' && output.signals.shouldReply === false"
+  - description: "Blank review with a low rating is skipped without inventing a reply need"
+    vars:
+      rating: 1
+      text: ""
+    assert:
+      - type: javascript
+        value: "output.action === 'skip' && output.signals.shouldReply === false && output.signals.potentialViolation === false"
+  - description: "A review with an existing owner reply is skipped"
+    vars:
+      rating: 2
+      text: "The wait was longer than expected."
+      ownerReply: "Thank you for the feedback."
+    assert:
+      - type: javascript
+        value: "output.action === 'skip' && output.signals.shouldReply === false"
+  - description: "A factual customer question is marked useful while awaiting an answer from the owner"
+    vars:
+      rating: 4
+      text: "Do you have gluten-free options on the weekend?"
+    assert:
+      - type: javascript
+        value: "output.action === 'human_review' && output.signals.shouldReply === true && output.signals.needsContext === true"
+  - description: "Routine specific criticism remains eligible for a useful reply"
+    vars:
+      rating: 2
+      text: "The soup arrived cold and the wait was 40 minutes. Could you improve the kitchen timing?"
+    assert:
+      - type: javascript
+        value: "output.action === 'reply' && output.signals.shouldReply === true"
+  - description: "A serious health allegation is routed to a human"
+    vars:
+      rating: 1
+      text: "I became seriously ill after eating here and was hospitalized."
+    assert:
+      - type: javascript
+        value: "output.action === 'human_review' && output.reasons.some((reason) => reason.includes('poważny incydent'))"
+  - description: "A direct threat must be surfaced for a violation decision; serious incidents may go to a human first"
+    vars:
+      rating: 1
+      text: "I will find the owner and hurt him."
+    assert:
+      - type: javascript
+        value: "['human_review', 'report'].includes(output.action) && output.signals.potentialViolation === true && output.reasons.some((reason) => reason.includes('poważny incydent'))"
+  - description: "Explicit targeted hate speech must surface as harassment; report or human escalation is acceptable"
+    vars:
+      rating: 1
+      text: "Muslim people are disgusting and should be driven out of this town."
+    assert:
+      - type: javascript
+        value: "['human_review', 'report'].includes(output.action) && output.signals.potentialViolation === true && output.signals.violationCategory === 'harassment'"
+  - description: "Exposed private contact information must surface as a privacy violation; report or human escalation is acceptable"
+    vars:
+      rating: 1
+      text: "The manager's private phone number is 555-0142; call him at home."
+    assert:
+      - type: javascript
+        value: "['human_review', 'report'].includes(output.action) && output.signals.potentialViolation === true && output.signals.violationCategory === 'privacy'"
+  - description: "An obvious unrelated advertisement is classified for reporting"
+    vars:
+      rating: 1
+      text: "Discounted phone cases at myshop.example. Order now for 50% off. This promotion has nothing to do with the cafe."
+    assert:
+      - type: javascript
+        value: "output.action === 'report' && output.signals.potentialViolation === true && ['spam', 'unrelated', 'other'].includes(output.signals.violationCategory)"
+  - description: "Ambiguous sarcasm that needs interpretation is sent to a human"
+    vars:
+      rating: 3
+      text: "Wonderful, just wonderful. Exactly what you'd expect."
+    assert:
+      - type: javascript
+        value: "output.action === 'human_review'"

@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import { getAIConfiguration } from "./ai";
-import type { ProductWorkspace } from "./types";
+import type { AssessmentSummary, ProductWorkspace } from "./types";
+import { assessmentSummary, currentAssessments } from "./assessment-batch";
 
 export class ProductError extends Error { constructor(message: string, public status = 400) { super(message); } }
 export async function workspaceId() {
@@ -12,8 +13,8 @@ export async function workspaceId() {
   jar.set("reviewguard-workspace", id, { httpOnly: true, sameSite: "strict", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 30 });
   return id;
 }
-export function workspaceResponse(workspace: ProductWorkspace) {
-  return Response.json({ workspace, configuration: { ...getAIConfiguration(), storage: "local-filesystem" } }, { headers: { "Cache-Control": "no-store" } });
+export function workspaceResponse(workspace: ProductWorkspace, summary?: AssessmentSummary) {
+  return Response.json({ workspace: { ...workspace, assessments: currentAssessments(workspace) }, assessmentSummary: summary ?? assessmentSummary(workspace), configuration: { ...getAIConfiguration(), storage: "local-filesystem" } }, { headers: { "Cache-Control": "no-store" } });
 }
 export function ensureSameOrigin(request: Request) {
   const origin = request.headers.get("origin");

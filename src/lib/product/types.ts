@@ -24,4 +24,5 @@ export type ProductWorkspace = {
   replies: Record<string, ReplySuggestion>; labels: Record<string, ReviewAction>;
 };
 export type ProductConfiguration = { aiConfigured: boolean; classifierModel: string; replyModel: string; storage: string };
-export type WorkspaceResponse = { workspace: ProductWorkspace; configuration: ProductConfiguration };
+export type AssessmentSummary = { status: "complete" | "partial" | "unavailable"; assessed: number; total: number; failed: number; message?: string };
+export type WorkspaceResponse = { workspace: ProductWorkspace; configuration: ProductConfiguration; assessmentSummary?: AssessmentSummary };

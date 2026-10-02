@@ -1,0 +1,17 @@
+description: "Recorded development routing regression for the captured false-reply assessment"
+prompts:
+  - "Route the recorded production assessment."
+providers:
+  - file://./recorded-provider.ts
+defaultTest:
+  options:
+    transform: "JSON.parse(output)"
+tests:
+  - description: "Captured reply assessment with shouldReply false is downgraded to skip"
+    vars:
+      action: reply
+      confidence: 0.91
+      shouldReply: false
+    assert:
+      - type: javascript
+        value: "output.action === 'skip' && output.confidence === null"

@@ -2,7 +2,7 @@ import type { ReviewAction, ReviewAssessment, Review, Location } from "./types";
 
 export const CLASSIFIER_MODEL = "typesafe-ai/jev";
 export const REPLY_MODEL = "openai/gpt-6-luna";
-export const POLICY_VERSION = "live-review-2026-10-01";
+export const POLICY_VERSION = "live-review-2026-10-02-usefulness";
 
 // These are conservative prototype routing thresholds, not measured accuracy.
 export const DECISION_THRESHOLDS = {
@@ -13,6 +13,11 @@ export const DECISION_THRESHOLDS = {
 } as const;
 
 export const ACTIONS: readonly ReviewAction[] = ["reply", "skip", "human_review", "report"];
+
+export function applyReplyUsefulnessGate(action: ReviewAction, confidence: number | null, shouldReply: boolean): { action: ReviewAction; confidence: number | null } {
+  // A confident action choice cannot override the separate usefulness check for replying.
+  return action === "reply" && !shouldReply ? { action: "skip", confidence: null } : { action, confidence };
+}
 
 const violationCategoryLabels: Record<string, string> = {
   spam: "spam lub reklamę",

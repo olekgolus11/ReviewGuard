@@ -24,9 +24,13 @@ On Linux install browser system dependencies with `pnpm exec playwright install 
 
 ## Review workflow
 
-Classify reviews, inspect the suggested action and reasons, and add factual manager context where requested. Reply suggestions use `openai/gpt-6-luna`; triage uses `typesafe-ai/jev`. Possible violations and useful-response signals are independent even though the queue shows one primary action. The initial probability thresholds are conservative routing heuristics, not validated accuracy. Potential violations always require human verification.
+Import automatically classifies reviews before returning the workspace. Inspect the suggested actions and reasons, and add factual manager context where requested. Successful assessments are persisted individually; missing configuration, provider failures or an execution deadline preserve the imported source and expose incomplete classification with a retry. Existing workspaces refresh assessments from an older policy on opening. Reply suggestions use `openai/gpt-6-luna`; triage uses `typesafe-ai/jev`. Possible violations and useful-response signals are independent even though the queue shows one primary action. The initial probability thresholds are conservative routing heuristics, not validated accuracy. Potential violations always require human verification.
 
 Edit generated replies, save them, and copy them for manual publication. The app does not establish that allegations are true and does not invent corrective action or compensation.
+
+## Classifier regressions
+
+Run `pnpm eval:classifier` with the Gateway key configured. The [Promptfoo suite](classifier-evaluation.md) exercises production classification and the captured contradictory reply/usefulness routing case. These synthetic development cases are regression checks; they do not establish accuracy on independent human-labelled reviews.
 
 ## Backtest
 
@@ -36,7 +40,7 @@ Prefer two independent human labellers and reconcile disagreements before evalua
 
 The report uses only reviews with both a reference label and model assessment. Rows are reference actions; columns are model predictions. It shows sample size, missing assessments, accuracy and precision/recall per action; undefined metrics stay undefined, rather than being presented as perfect results. Reply quality requires separate human assessment of factual grounding, specificity, tone, privacy and unsupported promises.
 
-Export JSON to freeze the current review snapshot, assessments with model/policy version, original generated reply text alongside human edits, and independent reference labels. Re-importing unchanged reviews retains work; changed review content or a different location invalidates the associated assessments, replies and reference labels. Original import snapshots are also retained on the server.
+Export JSON to freeze the current review snapshot, current-policy assessments with model/policy version, original generated reply text alongside human edits, and independent reference labels. Re-importing unchanged reviews retains work; changed review content or a different location invalidates the associated assessments, replies and reference labels. Original import snapshots are also retained on the server.
 
 ## Storage and hosting
 
