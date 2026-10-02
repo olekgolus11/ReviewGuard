@@ -1,8 +1,9 @@
+export { ACTIONS } from "./types.ts";
 import type { ReviewAction, ReviewAssessment, Review, Location } from "./types";
 
 export const CLASSIFIER_MODEL = "typesafe-ai/jev";
 export const REPLY_MODEL = "openai/gpt-6-luna";
-export const POLICY_VERSION = "live-review-2026-10-02-usefulness";
+export const POLICY_VERSION = "live-review-2026-10-02-owner-escalation";
 
 // These are conservative prototype routing thresholds, not measured accuracy.
 export const DECISION_THRESHOLDS = {
@@ -11,8 +12,6 @@ export const DECISION_THRESHOLDS = {
   signal: 0.7,
   seriousIncident: 0.55,
 } as const;
-
-export const ACTIONS: readonly ReviewAction[] = ["reply", "skip", "human_review", "report"];
 
 export function applyReplyUsefulnessGate(action: ReviewAction, confidence: number | null, shouldReply: boolean): { action: ReviewAction; confidence: number | null } {
   // A confident action choice cannot override the separate usefulness check for replying.

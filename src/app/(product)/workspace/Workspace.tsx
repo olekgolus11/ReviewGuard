@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProductConfiguration, ProductWorkspace, Review, ReviewAction, ReplyStyle, WorkspaceResponse } from "../../../lib/product/types";
+import { ACTIONS as actions } from "../../../lib/product/types";
 import prototypeStyles from "../../_demo-prototype/prototype.module.css";
 import { getReviewSourceUrl } from "../../../lib/product/google-review-source";
 
@@ -12,7 +13,7 @@ const actionLabels: Record<ReviewAction, string> = {
   report: "Rozważ zgłoszenie",
 };
 const actionShort: Record<ReviewAction, string> = { reply: "Odpowiedz", skip: "Pomiń", human_review: "Uwaga", report: "Zgłoszenie" };
-const actions: ReviewAction[] = ["reply", "skip", "human_review", "report"];
+
 const styles: { value: ReplyStyle; label: string }[] = [
   { value: "warm", label: "Życzliwy" },
   { value: "concise", label: "Zwięzły" },

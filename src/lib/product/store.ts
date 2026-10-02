@@ -5,7 +5,7 @@ import type { ImportSnapshot, ProductWorkspace, Review } from "./types.ts";
 
 export const emptyWorkspace = (): ProductWorkspace => ({ snapshot: null, assessments: {}, replies: {}, labels: {} });
 export function reviewFingerprint(review: Review): string {
-  return createHash("sha256").update(JSON.stringify({ rating: review.rating, text: review.text, title: review.title, language: review.language, media: review.media, ownerReply: review.ownerReply })).digest("hex");
+  return createHash("sha256").update(JSON.stringify({ author: review.author, publishedAt: review.publishedAt, rating: review.rating, text: review.text, title: review.title, language: review.language, media: review.media, ownerReply: review.ownerReply })).digest("hex");
 }
 const processState = globalThis as typeof globalThis & { reviewGuardLocks?: Map<string, Promise<unknown>> };
 const locks = processState.reviewGuardLocks ??= new Map();

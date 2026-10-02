@@ -1,4 +1,5 @@
-export type ReviewAction = "reply" | "skip" | "human_review" | "report";
+export const ACTIONS = ["reply", "skip", "human_review", "report"] as const;
+export type ReviewAction = typeof ACTIONS[number];
 export type ReviewMedia = { url: string; type: "image" | "video"; caption?: string };
 export type Location = { id: string; name: string; address: string | null; sourceUrl: string; totalReviewCount: number | null };
 export type Review = {

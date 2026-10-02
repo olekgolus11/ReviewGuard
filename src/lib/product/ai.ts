@@ -77,7 +77,7 @@ export async function assessReview(review: Review, location: Location): Promise<
           instructions: "Choose the single best next action for this review. Consider the review's written content and existing owner reply. Rating alone is never evidence of a policy violation. Normal criticism stays eligible for a reply. Routine positive descriptions of food, speed, polite service, or atmosphere do not by themselves merit a reply, even when several details are mentioned. Use human_review when facts are missing, claims are serious, language is unclear, or an assessment needs owner judgment.",
           criteria: {
             reply: "Written content includes a question, a concern or actionable feedback, or unusually specific praise that merits a relevant public response; no missing facts prevent a neutral reply. Ordinary positive comments about food, wait time, service, or atmosphere alone are not enough.",
-            skip: "No written content, an owner reply already exists, or the review is a routine positive account without a question or actionable issue and a public reply would add no useful information. Mentioning several ordinary details does not make routine praise reply-worthy.",
+            skip: "No written content, an owner reply already exists without an independent policy or serious/context concern, or the review is a routine positive account without a question or actionable issue and a public reply would add no useful information. Mentioning several ordinary details does not make routine praise reply-worthy.",
             human_review: "Serious incident, medical/safety allegation, legal threat, unclear sarcasm/meaning, disputed facts, or context is needed before a responsible response.",
             report: "The text itself contains concrete, observable evidence of a possible platform content-policy violation (such as threats, targeted harassment, hate, private data, advertising, unrelated content, or obvious duplication). Mere negativity, low stars, or an unverified claim is not sufficient.",
           },
@@ -110,19 +110,19 @@ export async function assessReview(review: Review, location: Location): Promise<
     const probableViolation = potentialViolation >= DECISION_THRESHOLDS.signal || actionProbabilities.report >= DECISION_THRESHOLDS.signal;
     const violationCategory = probableViolation && category !== "none" ? category : null;
 
-    // Deterministic workflow facts outrank model discretion.
-    if (review.ownerReply?.text.trim()) {
-      return createAssessment({ review, action: "skip", confidence: null, needsContext: needsContext >= DECISION_THRESHOLDS.signal, potentialViolation: probableViolation, violationCategory, shouldReply: false, seriousIncident: seriousIncident >= DECISION_THRESHOLDS.seriousIncident });
-    }
     if (!review.text.trim()) {
       return createAssessment({ review, action: "skip", confidence: null, needsContext: false, potentialViolation: false, violationCategory: null, shouldReply: false, seriousIncident: false });
     }
     const classified = decideAction(choice.choice, actionProbabilities, seriousIncident, needsContext);
-    const decision = applyReplyUsefulnessGate(classified.action, classified.confidence, shouldReply >= DECISION_THRESHOLDS.signal);
+    // Existing replies suppress another reply, but never independent escalation.
+    const existingReply = Boolean(review.ownerReply?.text.trim());
+    const decision = existingReply && classified.action !== "human_review" && !probableViolation
+      ? { action: "skip" as const, confidence: null }
+      : applyReplyUsefulnessGate(classified.action, classified.confidence, shouldReply >= DECISION_THRESHOLDS.signal);
     // Reporting and response signals stay independent, but a specific, likely violation is surfaced first.
     const action = probableViolation && decision.action !== "human_review" ? "report" : decision.action;
     const confidence = action === decision.action ? decision.confidence : actionProbabilities.report;
-    return createAssessment({ review, action, confidence, needsContext: needsContext >= DECISION_THRESHOLDS.signal, potentialViolation: probableViolation, violationCategory, shouldReply: shouldReply >= DECISION_THRESHOLDS.signal, seriousIncident: seriousIncident >= DECISION_THRESHOLDS.seriousIncident });
+    return createAssessment({ review, action, confidence, needsContext: needsContext >= DECISION_THRESHOLDS.signal, potentialViolation: probableViolation, violationCategory, shouldReply: !existingReply && shouldReply >= DECISION_THRESHOLDS.signal, seriousIncident: seriousIncident >= DECISION_THRESHOLDS.seriousIncident });
   } catch (error) {
     throw requestError("Review assessment", error);
   }

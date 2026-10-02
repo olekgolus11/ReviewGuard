@@ -1,5 +1,6 @@
-import type { ProductWorkspace, ReviewAction } from "./types.ts";
-export const reviewActions: ReviewAction[] = ["reply", "skip", "human_review", "report"];
+import type { ProductWorkspace } from "./types.ts";
+import { ACTIONS as reviewActions } from "./types.ts";
+export { reviewActions };
 export function calculateBacktest(workspace: ProductWorkspace) {
   const ids = workspace.snapshot?.reviews.map(review => review.id) ?? [];
   const labelled = ids.filter(id => workspace.labels[id]);
