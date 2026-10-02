@@ -141,7 +141,7 @@
 
 .queue-actions { display:flex; flex-wrap:wrap; gap:7px; }
 .queue-actions .action-count { cursor:default; }
-.action-summary { align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+.action-summary { align-items:center; justify-content:flex-start; flex-wrap:wrap; gap:10px; }
 .include-skipped { display:flex; align-items:center; gap:7px; color:var(--ink); font-size:12px; cursor:pointer; }
 .include-skipped input { width:16px; height:16px; accent-color:var(--ink); }
 .include-skipped > span { color:var(--muted); }
