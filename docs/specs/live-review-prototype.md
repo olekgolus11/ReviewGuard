@@ -25,3 +25,7 @@ Verify this correction against starting commit 32c38e3. Merge the reviewed chang
 ## Queue and source-link refinements
 
 The default queue combines reply, human review and report actions at once. Replace exclusive per-action filters with one optional "Uwzględnij pominięte" checkbox; retain rating filtering, consistent selected-review navigation and honest empty states. Review body typography should be ordinary readable body text (16px, normal weight), not a large bold quote. Open source should point to the exact Google review when a verified review-specific link or identifier supports it; fall back honestly to the place when unavailable. Apply verified identifier-based links to previously stored imports where possible. Verify against starting commit 3ef6f17 and merge locally.
+
+## Direct review source completion
+
+Finish the exact Google review source links requested above. The author explicitly authorized replacing the clipboard with one public Google review Share link to verify its format. Use empirically verified review-ID links for already stored imports where available, capture or derive review-specific links for fresh imports, and retain honest location fallback for records without a usable Google review identity. Ordinary imports must not read or overwrite the system clipboard. Verify against starting commit 21cf496, then commit and merge locally into main.

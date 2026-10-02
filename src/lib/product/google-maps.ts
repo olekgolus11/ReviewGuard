@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { chromium, type Browser, type Locator, type Page, type Route } from "playwright";
+import { createGoogleReviewPermalink } from "./google-review-source";
 import type { ImportSnapshot, Review, ReviewMedia } from "./types";
 
 const DEFAULT_LIMIT = 50;
@@ -344,7 +345,10 @@ async function importGoogleMapsWithMode(url: string, requestedLimit: number, hea
         sort = orderedNewest ? "newest" : "unknown (Google sort control unavailable)";
         await page.waitForTimeout(1_200);
         const result = await collectReviews(page, requestedLimit, orderedNewest, headless);
-        reviews = result.reviews;
+        reviews = result.reviews.map((review) => ({
+          ...review,
+          sourceUrl: createGoogleReviewPermalink(review.id, location.id),
+        }));
         stopReason = result.stopReason;
       } else {
         stopReason = "Google Maps loaded the place details but did not expose an accessible review entry point.";
